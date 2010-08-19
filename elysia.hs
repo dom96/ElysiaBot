@@ -26,16 +26,22 @@ onMessage plsMVar s m
     mods <- peekMVar plsMVar
     sendMsg s chan ("Loaded modules: " `B.append` (B.pack $ toString mods))
   
-  | B.isPrefixOf "|" msg = do
+  | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
     -- check if they are defined in the modules
     mods <- peekMVar plsMVar
-    ret <- callCmds prefix m mods
-    putStrLn $ show $ length $ concat ret
+    ret <- callCmds (Just prefix) m mods
     mapM (\plM -> sendMsg s chan (plM)) (concat ret)
     
+    putStrLn $ show $ length $ concat ret
+  | otherwise = do
+    mods <- peekMVar plsMVar
+    ret <- callCmds Nothing m mods
+    mapM (\plM -> sendMsg s chan (plM)) (concat ret)
+    
+    putStrLn $ show $ length $ concat ret
+  
     return ()
-  | otherwise = return ()
   where chan = fromJust $ mChan m
         msg = mMsg m
 

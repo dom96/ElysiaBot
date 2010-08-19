@@ -10,11 +10,13 @@ import Control.Monad (filterM)
 import Data.List (intercalate)
 
 type CmdFunc = (IrcMessage -> IO B.ByteString)
+type CmdMap  = M.Map B.ByteString CmdFunc
 
 data IrcModule = IrcModule
-  { pCmds :: M.Map B.ByteString CmdFunc
+  { mCmds :: CmdMap
+  , mRaws :: CmdMap
   , mName :: String
-  , pFile :: String
+  , mFile :: String
   }
 
 loadModule :: String -> IO (Either InterpreterError IrcModule)
@@ -22,8 +24,8 @@ loadModule filename = do
   r <- runInterpreter $ interpretModule filename
   case r of
     Left err -> return $ Left $ err
-    Right cmds -> return $ Right $ IrcModule 
-        (M.mapKeys (\k -> k) cmds) (takeBaseName filename) filename
+    Right (cmds, raws) -> return $ Right $ IrcModule 
+        (M.mapKeys (\k -> k) cmds) (M.mapKeys (\k -> k) raws) (takeBaseName filename) filename
 
 moduleDir :: FilePath -> FilePath -> FilePath
 moduleDir mDir dir = mDir </> dir </> (takeBaseName dir ++ ".hs")
@@ -40,13 +42,18 @@ loadMods dir = do
   return $ partitionEithers es
 
 
-callCmd :: B.ByteString -> IrcMessage -> IrcModule -> IO [B.ByteString]
-callCmd prefix m pl = do
-  let f = M.filterWithKey (\k _ -> k == cmd) (pCmds pl) 
+callCmd :: Maybe B.ByteString -> IrcMessage -> IrcModule -> IO [B.ByteString]
+callCmd (Just prefix) m pl = do
+  let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mCmds pl) 
   mapM (\c -> (snd c) m) (M.toList f)
   where cmd = B.drop (B.length prefix) ((B.words $ mMsg m) !! 0)
+  
+callCmd Nothing m pl       = do
+    let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mRaws pl) 
+    mapM (\c -> (snd c) m) (M.toList f)
+    where cmd = (B.words $ mMsg m) !! 0
 
-callCmds :: B.ByteString -> IrcMessage -> [IrcModule] -> IO [[B.ByteString]]
+callCmds :: Maybe B.ByteString -> IrcMessage -> [IrcModule] -> IO [[B.ByteString]]
 callCmds prefix m pls = do
   mapM (\pl -> callCmd prefix m pl) pls
 
@@ -67,19 +74,19 @@ prettyError (WontCompile  (x:xs)) =
 prettyError (NotAllowed   errM)   = "Not Allowed: " ++ errM
 prettyError (GhcException  errM)   = "Ghc Exception: " ++ errM
 
-interpretModule :: String -> Interpreter (M.Map B.ByteString CmdFunc)
+interpretModule :: String -> Interpreter (CmdMap, CmdMap)
 interpretModule filename = do
   say $ "Loading module " ++ filename
+  set [languageExtensions := [OverloadedStrings], searchPath := [".", "modules", takeDirectory filename]]
   loadModules [filename]
   
-  set [languageExtensions := [OverloadedStrings]]
-  
-  exts <- get languageExtensions
+  exts <- get searchPath
   say $ show exts
   
   setTopLevelModules [(takeBaseName filename)]
   setImportsQ [("Prelude", Nothing), ("Data.Map", Nothing),
       ("Data.ByteString.Char8", Just "B"), ("Data.ByteString.Internal", Nothing)]
 
-  a <- interpret "moduleCmds" (as :: (M.Map B.ByteString CmdFunc))
-  return a
+  cmds <- interpret "moduleCmds" (as :: CmdMap)
+  raws <- interpret "moduleRaws" (as :: CmdMap)
+  return (cmds, raws)
