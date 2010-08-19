@@ -8,43 +8,59 @@ import Control.Concurrent.MVar
 
 import Modules
 
-plugins = ["Hi.hs"]
+prefix = "|"
 
-onMessage :: MVar [IrcPlugin] -> EventFunc
+
+isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
+
+onMessage :: MVar [IrcModule] -> EventFunc
 onMessage plsMVar s m
-  | msg == "|hai" = do
+  | msg `isCmd` "hai" = do
     sendMsg s chan "hai thar!"
-  | B.isPrefixOf "|say" msg = do
+  | msg `isCmd` "say" = do
     sendMsg s chan (B.drop 1 $ B.dropWhile (/= ' ') msg)
-  | msg == "|clear" = do
-    putMVar plsMVar []
-    
-  | otherwise = do
-    pls <- takeMVar plsMVar
-    putMVar plsMVar pls
-    ret <- callCmds m pls
+  | msg `isCmd` "clear" = do
+    _ <- swapMVar plsMVar []
+    sendMsg s chan "Modules cleared"
+  | msg `isCmd` "modules" = do
+    mods <- peekMVar plsMVar
+    sendMsg s chan ("Loaded modules: " `B.append` (B.pack $ toString mods))
+  
+  | B.isPrefixOf "|" msg = do
+    -- If no commands are defined for this command
+    -- check if they are defined in the modules
+    mods <- peekMVar plsMVar
+    ret <- callCmds prefix m mods
     putStrLn $ show $ length $ concat ret
-    mapM (\plM -> sendMsg s chan (B.pack plM)) (concat ret)
+    mapM (\plM -> sendMsg s chan (plM)) (concat ret)
     
     return ()
-    
+  | otherwise = return ()
   where chan = fromJust $ mChan m
         msg = mMsg m
-        
-        
+
+peekMVar :: MVar a -> IO a
+peekMVar m = do
+  pls <- takeMVar m
+  putMVar m pls
+  return pls
+
 freenode = IrcConfig 
   "irc.freenode.net" -- Address
   6667 -- Port
-  "SimpleIRCBot" -- Nickname
-  "simpleirc"  -- Username
-  "simple irc" -- Realname
-  ["#()"] -- Channels to join on connect
+  "ElysiaBot" -- Nickname
+  "elysia"  -- Username
+  "elysia" -- Realname
+  ["#()", "##XAMPP"] -- Channels to join on connect
 
 main = do
+  (modErrs, mods) <- loadMods "modules"
+  putStrLn $ show $ length mods
   plsMVar <- newEmptyMVar
-  ret <- loadPlugin (plugins !! 0)
-  either putStrLn (\r -> putMVar plsMVar [r]) ret
+  putMVar plsMVar mods
+  
+  -- print any module loading errors.
+  mapM (putStrLn . prettyError) modErrs
+  
   let events = [(Privmsg (onMessage plsMVar))]
-
-
   connect (freenode events) False
