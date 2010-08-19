@@ -5,7 +5,7 @@ import Data.Either
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
 import Control.Concurrent.MVar
-
+import Language.Haskell.Interpreter (InterpreterError)
 import Modules
 
 prefix = "|"
@@ -25,7 +25,14 @@ onMessage plsMVar s m
   | msg `isCmd` "modules" = do
     mods <- peekMVar plsMVar
     sendMsg s chan ("Loaded modules: " `B.append` (B.pack $ toString mods))
-  
+  | msg `isCmd` "reload"  = do
+    (modErrs, mods) <- loadMods "modules"
+    if null modErrs 
+      then do _ <- swapMVar plsMVar mods
+              sendMsg s chan "Modules reloaded succesfully."
+      else do sendMsg s chan "Errors occured while reloading modules. Aborting."
+              mapM (putStrLn . prettyError) modErrs
+              
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
     -- check if they are defined in the modules
@@ -34,6 +41,7 @@ onMessage plsMVar s m
     mapM (\plM -> sendMsg s chan (plM)) (concat ret)
     
     putStrLn $ show $ length $ concat ret
+    
   | otherwise = do
     mods <- peekMVar plsMVar
     ret <- callCmds Nothing m mods
@@ -51,6 +59,14 @@ peekMVar m = do
   putMVar m pls
   return pls
 
+loadModsMVar :: String -> IO ([InterpreterError], MVar [IrcModule])
+loadModsMVar modDir = do
+  (modErrs, mods) <- loadMods modDir
+  putStrLn $ show $ length mods
+  plsMVar <- newEmptyMVar
+  putMVar plsMVar mods
+  return (modErrs, plsMVar)
+
 freenode = IrcConfig 
   "irc.freenode.net" -- Address
   6667 -- Port
@@ -59,14 +75,20 @@ freenode = IrcConfig
   "elysia" -- Realname
   ["#()", "##XAMPP"] -- Channels to join on connect
 
+ninthbit = IrcConfig 
+  "irc.ninthbit.net" -- Address
+  6667 -- Port
+  "ElysiaBot" -- Nickname
+  "elysia"  -- Username
+  "elysia" -- Realname
+  ["#programming", "#bots"] -- Channels to join on connect
+
 main = do
-  (modErrs, mods) <- loadMods "modules"
-  putStrLn $ show $ length mods
-  plsMVar <- newEmptyMVar
-  putMVar plsMVar mods
+  (modErrs, plsMVar) <- loadModsMVar "modules"
   
   -- print any module loading errors.
   mapM (putStrLn . prettyError) modErrs
   
   let events = [(Privmsg (onMessage plsMVar))]
+  connect (ninthbit events) True
   connect (freenode events) False

@@ -12,11 +12,15 @@ data HSResp = HSResp { hsResult :: String
                      , hsExpr   :: String
                      }
 
+notEscapeChar c
+  | c == '[' || c == ']' = False
+  | otherwise            = isUnescapedInURI c
+
 tryHaskellBaseUrl = "http://tryhaskell.org/haskell.json?method=eval&expr="
 
 evalHS code = do
-  putStrLn code
-  let tryHaskellUrl = fromJust $ parseURI $ tryHaskellBaseUrl ++ code
+  let tryHaskellUrl = fromJust $ parseURI $ 
+                      escapeURIString (\a -> notEscapeChar a) $ tryHaskellBaseUrl ++ code
   (uri, rsp) <- browse $ do
                 setOutHandler (\a -> return ())
                 setErrHandler (\a -> return ())
@@ -31,3 +35,4 @@ parseRSP xs =
 parseArr [("error", JSString xs)] = Left $ fromJSString xs
 parseArr [("result", JSString res), ("type", JSString typ), ("expr", JSString ex)] =
   Right $ HSResp (fromJSString res) (fromJSString typ) (fromJSString ex)
+parseArr [("internal", JSString xs)] = Left $ fromJSString xs
