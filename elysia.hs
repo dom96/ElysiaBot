@@ -23,12 +23,12 @@ onMessage plsMVar s m
     _ <- swapMVar plsMVar []
     sendMsg s chan "Modules cleared"
   | msg `isCmd` "modules" = do
-    mods <- peekMVar plsMVar
+    mods <- readMVar plsMVar
     sendMsg s chan ("Loaded modules: " `B.append` (B.pack $ toString mods))
   | msg `isCmd` "reload"  = do
     (modErrs, mods) <- loadMods "modules"
     if null modErrs
-      then do plsMVar <- newMVar mods
+      then do _ <- swapMVar plsMVar mods
               sendMsg s chan "Modules reloaded succesfully."
       else do sendMsg s chan "Errors occured while reloading modules. Aborting."
               mapM (putStrLn . prettyError) modErrs
@@ -37,14 +37,14 @@ onMessage plsMVar s m
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
     -- check if they are defined in the modules
-    mods <- peekMVar plsMVar
+    mods <- readMVar plsMVar
     ret <- callCmds (Just prefix) m mods
     mapM (\plM -> sendMsg s chan (plM)) (concat ret)
     
     putStrLn $ show $ length $ concat ret
     
   | otherwise = do
-    mods <- peekMVar plsMVar
+    mods <- readMVar plsMVar
     ret <- callCmds Nothing m mods
     mapM (\plM -> sendMsg s chan (plM)) (concat ret)
     
@@ -54,17 +54,10 @@ onMessage plsMVar s m
   where chan = fromJust $ mChan m
         msg = mMsg m
 
-peekMVar :: MVar a -> IO a
-peekMVar m = do
-  pls <- takeMVar m
-  putMVar m pls
-  return pls
-
 loadModsMVar :: String -> IO ([InterpreterError], MVar [IrcModule])
 loadModsMVar modDir = do
   (modErrs, mods) <- loadMods modDir
-  plsMVar <- newEmptyMVar
-  putMVar plsMVar mods
+  plsMVar <- newMVar mods
   return (modErrs, plsMVar)
 
 freenode = IrcConfig 

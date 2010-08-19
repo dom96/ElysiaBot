@@ -76,6 +76,8 @@ prettyError (GhcException  errM)   = "Ghc Exception: " ++ errM
 
 interpretModule :: String -> Interpreter (CmdMap, CmdMap)
 interpretModule filename = do
+  reset
+  
   say $ "Loading module " ++ filename
   set [languageExtensions := [OverloadedStrings], searchPath := [".", "modules", takeDirectory filename]]
   loadModules [filename]
