@@ -27,11 +27,12 @@ onMessage plsMVar s m
     sendMsg s chan ("Loaded modules: " `B.append` (B.pack $ toString mods))
   | msg `isCmd` "reload"  = do
     (modErrs, mods) <- loadMods "modules"
-    if null modErrs 
-      then do _ <- swapMVar plsMVar mods
+    if null modErrs
+      then do plsMVar <- newMVar mods
               sendMsg s chan "Modules reloaded succesfully."
       else do sendMsg s chan "Errors occured while reloading modules. Aborting."
               mapM (putStrLn . prettyError) modErrs
+              return ()
               
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
@@ -62,7 +63,6 @@ peekMVar m = do
 loadModsMVar :: String -> IO ([InterpreterError], MVar [IrcModule])
 loadModsMVar modDir = do
   (modErrs, mods) <- loadMods modDir
-  putStrLn $ show $ length mods
   plsMVar <- newEmptyMVar
   putMVar plsMVar mods
   return (modErrs, plsMVar)
@@ -73,7 +73,7 @@ freenode = IrcConfig
   "ElysiaBot" -- Nickname
   "elysia"  -- Username
   "elysia" -- Realname
-  ["#()", "##XAMPP"] -- Channels to join on connect
+  ["#()", "#HSBotTest"] -- Channels to join on connect
 
 ninthbit = IrcConfig 
   "irc.ninthbit.net" -- Address
@@ -90,5 +90,5 @@ main = do
   mapM (putStrLn . prettyError) modErrs
   
   let events = [(Privmsg (onMessage plsMVar))]
-  connect (ninthbit events) True
-  connect (freenode events) False
+  --connect (ninthbit events) True False
+  connect (freenode events) False True
