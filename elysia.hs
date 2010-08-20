@@ -7,9 +7,9 @@ import qualified Data.Map as M
 import Control.Concurrent.MVar
 import Language.Haskell.Interpreter (InterpreterError)
 import Modules
+import Config
 
 prefix = "|"
-
 
 isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
 
@@ -60,21 +60,17 @@ loadModsMVar modDir = do
   plsMVar <- newMVar mods
   return (modErrs, plsMVar)
 
-freenode = IrcConfig 
-  "irc.freenode.net" -- Address
-  6667 -- Port
-  "ElysiaBot" -- Nickname
-  "elysia"  -- Username
-  "elysia" -- Realname
-  ["#()", "#HSBotTest"] -- Channels to join on connect
+confToIRCConf :: String -> String -> String -> ConfigServer -> ([IrcEvent] -> IrcConfig)
+confToIRCConf nick usr real confServ =
+  IrcConfig (cnfAddr confServ) (cnfPort confServ) nick usr real (cnfChans confServ)
 
-ninthbit = IrcConfig 
-  "irc.ninthbit.net" -- Address
-  6667 -- Port
-  "ElysiaBot" -- Nickname
-  "elysia"  -- Username
-  "elysia" -- Realname
-  ["#programming", "#bots"] -- Channels to join on connect
+connectServers events = do
+  conf <- readConfig "elysia.ini"
+  let (nick, usr, real) = ((cnfNick conf), (cnfUser conf), (cnfReal conf)) 
+  let lConn t serv = connect (confToIRCConf nick usr real serv events) t True
+  mapM (lConn True) (drop 1 $ cnfServers conf)
+  
+  lConn False (cnfServers conf !! 0)
 
 main = do
   (modErrs, plsMVar) <- loadModsMVar "modules"
@@ -83,5 +79,4 @@ main = do
   mapM (putStrLn . prettyError) modErrs
   
   let events = [(Privmsg (onMessage plsMVar))]
-  --connect (ninthbit events) True False
-  connect (freenode events) False True
+  connectServers events
