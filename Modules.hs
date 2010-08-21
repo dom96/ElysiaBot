@@ -7,7 +7,7 @@ import Language.Haskell.Interpreter
 import System.FilePath
 import System.Directory
 import Control.Monad (filterM)
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 
 type CmdFunc = (IrcMessage -> IO B.ByteString)
 type CmdMap  = M.Map B.ByteString CmdFunc
@@ -32,7 +32,7 @@ moduleDir mDir dir = mDir </> dir </> (takeBaseName dir ++ ".hs")
 
 isCorrectDir dir f = do
   r <- doesDirectoryExist (dir </> f)
-  return $ r && f /= "." && f /= ".."
+  return $ r && f /= "." && f /= ".." && not ("." `isPrefixOf` f) && not ("~" `isPrefixOf` f)
 
 loadMods :: String -> IO ([InterpreterError], [IrcModule])
 loadMods dir = do
@@ -76,14 +76,15 @@ prettyError (GhcException  errM)   = "Ghc Exception: " ++ errM
 
 interpretModule :: String -> Interpreter (CmdMap, CmdMap)
 interpretModule filename = do
-  reset
-  
   say $ "Loading module " ++ filename
   set [languageExtensions := [OverloadedStrings], searchPath := [".", "modules", takeDirectory filename]]
   loadModules [filename]
   
   exts <- get searchPath
   say $ show exts
+  
+  mods <- getLoadedModules
+  say $ show mods
   
   setTopLevelModules [(takeBaseName filename)]
   setImportsQ [("Prelude", Nothing), ("Data.Map", Nothing),
