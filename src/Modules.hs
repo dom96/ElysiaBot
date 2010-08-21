@@ -49,9 +49,10 @@ callCmd (Just prefix) m pl = do
   where cmd = B.drop (B.length prefix) ((B.words $ mMsg m) !! 0)
   
 callCmd Nothing m pl       = do
-    let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mRaws pl) 
-    mapM (\c -> (snd c) m) (M.toList f)
-    where cmd = (B.words $ mMsg m) !! 0
+  B.putStrLn $ (B.pack "cmd = ") `B.append` cmd
+  let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mRaws pl) 
+  mapM (\c -> (snd c) m) (M.toList f)
+  where cmd = mMsg m
 
 callCmds :: Maybe B.ByteString -> IrcMessage -> [IrcModule] -> IO [[B.ByteString]]
 callCmds prefix m pls = do
