@@ -13,8 +13,6 @@ moduleCmds = empty
 moduleRaws = fromList
   [(B.pack "> ", evalCode), (B.pack ":t ", getType)]
 
-
-
 evalCode m = do
   evalResult <- evalM (B.unpack (B.drop 2 msg))
   either (\err -> return $ "Error: " `B.append` (B.pack err))
@@ -31,7 +29,7 @@ getType m  = do
          evalResult
   where msg = mMsg m
         code = removeStart ' ' (B.unpack (B.drop 2 msg))
-       
+ 
 formatErr err
   | length e > 1 = 
     let second = (take 28 $ e !! 1) ++ "..."

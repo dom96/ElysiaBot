@@ -8,51 +8,8 @@ import Control.Concurrent.MVar
 import Language.Haskell.Interpreter (InterpreterError)
 import Modules
 import Config
-
-prefix = "|"
-
-isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
-
-onMessage :: MVar [IrcModule] -> EventFunc
-onMessage plsMVar s m
-  | msg `isCmd` "hai" = do
-    sendMsg s chan "hai thar!"
-  | msg `isCmd` "say" = do
-    sendMsg s chan (B.drop 1 $ B.dropWhile (/= ' ') msg)
-  | msg `isCmd` "clear" = do
-    _ <- swapMVar plsMVar []
-    sendMsg s chan "Modules cleared"
-  | msg `isCmd` "modules" = do
-    mods <- readMVar plsMVar
-    sendMsg s chan ("Loaded modules: " `B.append` (B.pack $ toString mods))
-  | msg `isCmd` "reload"  = do
-    (modErrs, mods) <- loadMods "modules"
-    if null modErrs
-      then do _ <- swapMVar plsMVar mods
-              sendMsg s chan "Modules reloaded succesfully."
-      else do sendMsg s chan "Errors occured while reloading modules. Aborting."
-              mapM (putStrLn . prettyError) modErrs
-              return ()
-              
-  | B.isPrefixOf prefix msg = do
-    -- If no commands are defined for this command
-    -- check if they are defined in the modules
-    mods <- readMVar plsMVar
-    ret <- callCmds (Just prefix) m mods
-    mapM (\plM -> sendMsg s chan (plM)) (concat ret)
-    
-    putStrLn $ show $ length $ concat ret
-    
-  | otherwise = do
-    mods <- readMVar plsMVar
-    ret <- callCmds Nothing m mods
-    mapM (\plM -> sendMsg s chan (plM)) (concat ret)
-    
-    putStrLn $ show $ length $ concat ret
-  
-    return ()
-  where chan = fromJust $ mChan m
-        msg = mMsg m
+import Users
+import Commands
 
 loadModsMVar :: String -> IO ([InterpreterError], MVar [IrcModule])
 loadModsMVar modDir = do
@@ -73,10 +30,17 @@ connectServers events = do
   lConn False (cnfServers conf !! 0)
 
 main = do
-  (modErrs, plsMVar) <- loadModsMVar "modules"
+  (modErrs, mods) <- loadMods "modules"
   
   -- print any module loading errors.
   mapM (putStrLn . prettyError) modErrs
   
-  let events = [(Privmsg (onMessage plsMVar))]
+  -- Load the users
+  putStrLn "Loading users"
+  users <- readUsers "users.ini"
+  
+  -- Create the MessageArgs MVar
+  argsMVar <- newMVar (MessageArgs mods users)
+  
+  let events = [(Privmsg (onMessage argsMVar)), (Privmsg (onPrivateMessage argsMVar))]
   connectServers events

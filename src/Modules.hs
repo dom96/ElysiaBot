@@ -49,7 +49,7 @@ callCmd (Just prefix) m pl = do
   where cmd = B.drop (B.length prefix) ((B.words $ mMsg m) !! 0)
   
 callCmd Nothing m pl       = do
-  B.putStrLn $ (B.pack "cmd = ") `B.append` cmd
+  --B.putStrLn $ (B.pack "cmd = ") `B.append` cmd
   let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mRaws pl) 
   mapM (\c -> (snd c) m) (M.toList f)
   where cmd = mMsg m
