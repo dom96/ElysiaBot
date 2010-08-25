@@ -47,11 +47,16 @@ parseRet ret code
     return $ Right (expr, typ, result)
   | otherwise                 = return $ Left $ "Unknown error. Received " ++ ret
 
+escapeCode code = 
+  concatMap (\c -> if c == '\"' then "\\\"" else [c]) code
+
 evalM code = do
-  (inp,out,err,pid) <- runInteractiveCommand $ "mueval -i --expression '" ++ code ++ "'"
-  ret <- hGetContents out
-  parsed <- parseRet ret code
+  putStrLn $ "Executing...\n  mueval -i --expression \"" ++ (escapeCode code) ++ "\""
+  (inp,out,err,pid) <- runInteractiveCommand $ "mueval -i --expression \"" ++ (escapeCode code) ++ "\""
   waitForProcess pid
+  ret <- hGetContents out
+  putStrLn $ "Got contents...\n  " ++ ret
+  parsed <- parseRet ret code
   
   return parsed
   
