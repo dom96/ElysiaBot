@@ -89,7 +89,7 @@ interpretModule filename = do
   
   setTopLevelModules [(takeBaseName filename)]
   setImportsQ [("Prelude", Nothing), ("Data.Map", Nothing),
-      ("Data.ByteString.Char8", Just "B"), ("Data.ByteString.Internal", Nothing)]
+      ("Data.ByteString.Char8", Just "B"), ("Data.ByteString.Internal", Nothing), ("Modules", Nothing)]
 
   cmds <- interpret "moduleCmds" (as :: CmdMap)
   raws <- interpret "moduleRaws" (as :: CmdMap)

@@ -7,6 +7,7 @@ import qualified Data.ByteString.Char8 as B
 import System.Process
 import Control.Concurrent
 import System.IO
+import Modules
 
 moduleCmds = empty
 

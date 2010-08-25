@@ -5,6 +5,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent.MVar
+import System.Exit
 
 import Modules
 import Users
@@ -39,6 +40,9 @@ onMessage argsMVar s m
       else do sendMsg s chan "Errors occured while reloading modules. Aborting."
               mapM (putStrLn . prettyError) modErrs
               return ()
+  
+  | msg `isCmd` "quit"  = do
+    exitSuccess
   
   | msg `isCmd` "users" = do
     args <- readMVar argsMVar
