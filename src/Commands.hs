@@ -31,15 +31,7 @@ onMessage argsMVar s m
   | msg `isCmd` "modules" = do
     args <- readMVar argsMVar
     let mods = modules args
-    sendMsg s chan ("Loaded modules: " `B.append` (B.pack $ toString mods))
-  | msg `isCmd` "reload"  = do
-    (modErrs, mods) <- loadMods "modules"
-    if null modErrs
-      then do modifyMVar_ argsMVar (\a -> return $ a {modules = mods})
-              sendMsg s chan "Modules reloaded succesfully."
-      else do sendMsg s chan "Errors occured while reloading modules. Aborting."
-              mapM (putStrLn . prettyError) modErrs
-              return ()
+    sendMsg s chan ("Available modules: " `B.append` (B.pack $ toString mods))
   
   | msg `isCmd` "quit"  = do
     exitSuccess

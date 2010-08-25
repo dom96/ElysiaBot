@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Hi (moduleCmds, moduleRaws, msg) where
+module Modules.Hi.Hi (moduleCmds, moduleRaws, msg) where
 import Network.SimpleIRC.Types
 import qualified Data.ByteString.Char8 as B
 import Data.Map

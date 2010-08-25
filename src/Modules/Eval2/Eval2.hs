@@ -1,4 +1,5 @@
-module Eval2 (moduleCmds, moduleRaws) where
+{-# LANGUAGE OverloadedStrings #-}
+module Modules.Eval2.Eval2 (moduleCmds, moduleRaws) where
 import Network.SimpleIRC.Types
 import Data.Map
 import Data.Maybe
@@ -7,7 +8,6 @@ import qualified Data.ByteString.Char8 as B
 import System.Process
 import Control.Concurrent
 import System.IO
-import Modules
 
 moduleCmds = empty
 
@@ -50,7 +50,11 @@ parseRet ret code
 evalM code = do
   (inp,out,err,pid) <- runInteractiveCommand $ "mueval -i --expression '" ++ code ++ "'"
   ret <- hGetContents out
-  parseRet ret code
+  parsed <- parseRet ret code
+  waitForProcess pid
+  
+  return parsed
+  
   
 removeStart p (x:xs)
   | x == p    = xs

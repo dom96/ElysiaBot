@@ -11,12 +11,6 @@ import Config
 import Users
 import Commands
 
-loadModsMVar :: String -> IO ([InterpreterError], MVar [IrcModule])
-loadModsMVar modDir = do
-  (modErrs, mods) <- loadMods modDir
-  plsMVar <- newMVar mods
-  return (modErrs, plsMVar)
-
 confToIRCConf :: String -> String -> String -> ConfigServer -> ([IrcEvent] -> IrcConfig)
 confToIRCConf nick usr real confServ =
   IrcConfig (cnfAddr confServ) (cnfPort confServ) nick usr real (cnfChans confServ)
@@ -30,10 +24,7 @@ connectServers events = do
   lConn False (cnfServers conf !! 0)
 
 main = do
-  (modErrs, mods) <- loadMods "modules"
-  
-  -- print any module loading errors.
-  mapM (putStrLn . prettyError) modErrs
+  let mods = loadMods "modules"
   
   -- Load the users
   putStrLn "Loading users"

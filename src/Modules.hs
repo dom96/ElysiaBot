@@ -1,13 +1,13 @@
-module Modules (IrcModule(..), CmdFunc, loadModule, loadMods, callCmds, prettyError, toString) where
+module Modules (IrcModule(..), CmdFunc, loadMods, callCmds, toString) where
 import Network.SimpleIRC
+
+import Data.List (intercalate)
 import qualified Data.Map as M
-import Data.Either
 import qualified Data.ByteString.Char8 as B
-import Language.Haskell.Interpreter
-import System.FilePath
-import System.Directory
-import Control.Monad (filterM)
-import Data.List (intercalate, isPrefixOf)
+
+-- Modules
+import qualified Modules.Hi.Hi as Hi
+import qualified Modules.Eval2.Eval2 as Eval2
 
 type CmdFunc = (IrcMessage -> IO B.ByteString)
 type CmdMap  = M.Map B.ByteString CmdFunc
@@ -16,31 +16,13 @@ data IrcModule = IrcModule
   { mCmds :: CmdMap
   , mRaws :: CmdMap
   , mName :: String
-  , mFile :: String
   }
 
-loadModule :: String -> IO (Either InterpreterError IrcModule)
-loadModule filename = do
-  r <- runInterpreter $ interpretModule filename
-  case r of
-    Left err -> return $ Left $ err
-    Right (cmds, raws) -> return $ Right $ IrcModule 
-        (M.mapKeys (\k -> k) cmds) (M.mapKeys (\k -> k) raws) (takeBaseName filename) filename
-
-moduleDir :: FilePath -> FilePath -> FilePath
-moduleDir mDir dir = mDir </> dir </> (takeBaseName dir ++ ".hs")
-
-isCorrectDir dir f = do
-  r <- doesDirectoryExist (dir </> f)
-  return $ r && f /= "." && f /= ".." && not ("." `isPrefixOf` f) && not ("~" `isPrefixOf` f)
-
-loadMods :: String -> IO ([InterpreterError], [IrcModule])
-loadMods dir = do
-  mods  <- getDirectoryContents dir
-  modsF <- filterM (isCorrectDir dir) mods
-  es    <- mapM (loadModule . (moduleDir dir)) modsF
-  return $ partitionEithers es
-
+loadMods :: String -> [IrcModule]
+loadMods dir =
+  [ IrcModule Hi.moduleCmds Hi.moduleRaws "Hi"
+  , IrcModule Eval2.moduleCmds Eval2.moduleRaws "Eval2"
+  ]
 
 callCmd :: Maybe B.ByteString -> IrcMessage -> IrcModule -> IO [B.ByteString]
 callCmd (Just prefix) m pl = do
@@ -62,35 +44,3 @@ toString :: [IrcModule] -> String
 toString mods = 
   let names = map (mName) mods
   in intercalate ", " names
-
-say :: String -> Interpreter ()
-say = liftIO . putStrLn
-
-prettyError :: InterpreterError -> String
-prettyError (UnknownError errM)   = "Unknown Error: " ++ errM
-prettyError (WontCompile  (x:xs)) = 
-  if length xs /= 0
-    then "Wont Compile: " ++ (errMsg x) ++ "\n... " ++ (show $ length xs) ++ " more errors." 
-    else "Wont Compile: " ++ (errMsg x)
-prettyError (NotAllowed   errM)   = "Not Allowed: " ++ errM
-prettyError (GhcException  errM)   = "Ghc Exception: " ++ errM
-
-interpretModule :: String -> Interpreter (CmdMap, CmdMap)
-interpretModule filename = do
-  say $ "Loading module " ++ filename
-  set [languageExtensions := [OverloadedStrings], searchPath := [".", "modules", takeDirectory filename]]
-  loadModules [filename]
-  
-  exts <- get searchPath
-  say $ show exts
-  
-  mods <- getLoadedModules
-  say $ show mods
-  
-  setTopLevelModules [(takeBaseName filename)]
-  setImportsQ [("Prelude", Nothing), ("Data.Map", Nothing),
-      ("Data.ByteString.Char8", Just "B"), ("Data.ByteString.Internal", Nothing), ("Modules", Nothing)]
-
-  cmds <- interpret "moduleCmds" (as :: CmdMap)
-  raws <- interpret "moduleRaws" (as :: CmdMap)
-  return (cmds, raws)
