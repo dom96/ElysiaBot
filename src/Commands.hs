@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Commands (onMessage, onPrivateMessage, safeCheckArg, MessageArgs(..)) where
 import Network.SimpleIRC
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent.MVar
@@ -25,7 +25,8 @@ safeGetArg str index
     Just (word !! index)
   | otherwise = Nothing
   where word = B.words str
-  
+
+-- |Checks if index exists.
 safeCheckArg :: B.ByteString -> Int -> Bool
 safeCheckArg str index = (length word - 1) >= index
   where word = B.words str
@@ -50,6 +51,17 @@ onMessage argsMVar s m
     args <- readMVar argsMVar
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m) exitSuccess
             (sendMsg s chan "You need to be an admin to execute this command.")
+  
+  | msg `isCmd` "mute" && safeCheckArg msg 1  = do
+    args <- readMVar argsMVar
+    ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
+      (do let mod    = fromJust $ safeGetArg msg 1
+          let result = muteModule (modules args) mod chan
+          if isJust result
+            then do _ <- swapMVar argsMVar (args {modules = fromJust $ result})
+                    sendMsg s chan "Module successfully muted."
+            else sendMsg s chan "Module not found.")
+      (sendMsg s chan "You need to be an admin to execute this command.")
   
   | msg `isCmd` "users" = do
     args <- readMVar argsMVar
@@ -77,7 +89,7 @@ onMessage argsMVar s m
     -- check if they are defined in the modules
     args <- readMVar argsMVar
     let mods = modules args
-    ret <- callCmds (Just prefix) m mods
+    ret <- callCmds (Just prefix) m mods s
     mapM (\plM -> sendMsg s chan (plM)) (concat ret)
     
     putStrLn $ show $ length $ concat ret
@@ -85,7 +97,7 @@ onMessage argsMVar s m
   | otherwise = do
     args <- readMVar argsMVar
     let mods = modules args
-    ret <- callCmds Nothing m mods
+    ret <- callCmds Nothing m mods s
     mapM (\plM -> sendMsg s chan (plM)) (concat ret)
     
     putStrLn $ show $ length $ concat ret
@@ -131,13 +143,4 @@ changeStatus argsMVar state s m
 
 (?) :: Bool -> (c, c) -> c
 (?) b (t, e) = if b then t else e
-
--- If a private message(/msg) is received then returns the nick, otherwise the chan
-getChan :: IrcServer -> IrcMessage -> B.ByteString
-getChan s m =
-  if sNickname s == chan
-    then (fromJust $ mNick m)
-    else chan
-  
-  where chan = fromJust $ mChan m
 
