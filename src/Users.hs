@@ -1,12 +1,12 @@
 {-# LANGUAGE PackageImports #-}
-module Users (readUsers, saveUsers, setLoggedin, getLoggedin, Users, User(..)) where
+module Users (Users, User(..), readUsers, saveUsers, setLoggedin, getLoggedin, checkOnline, checkAdmin, ifAdmin) where
 import Data.ConfigFile
 import System.IO  (writeFile)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.List  (intercalate)
 import "mtl" Control.Monad.Error
-type Users = M.Map String User -- nick -> (pass, admin?)
+type Users = M.Map String User -- nick -> User
 
 data User = User
   { uPass     :: String
@@ -71,4 +71,20 @@ getLoggedin u =
   where online = M.filter (\a -> uLoggedin a) (u)
         users  = intercalate ", " (M.keys online) 
 
+checkOnline :: Users -> String -> Bool
+checkOnline u n = M.member n online
+  where online = M.filter (\a -> uLoggedin a) (u)
 
+checkAdmin :: Users -> String -> Bool
+checkAdmin u n =
+  case usr of
+    (Just user) -> uAdmin user
+    Nothing     -> False
+  where online = M.filter (\a -> uLoggedin a) (u)
+        usr    = M.lookup n online
+        
+ifAdmin :: Users -> String -> (IO a) -> (IO a) -> IO a
+ifAdmin users nick func func1 = do
+  if checkAdmin users nick
+    then func
+    else func1

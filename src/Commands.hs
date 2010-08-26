@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Commands (onMessage, onPrivateMessage, MessageArgs(..)) where
+module Commands (onMessage, onPrivateMessage, safeCheckArg, MessageArgs(..)) where
 import Network.SimpleIRC
 import Data.Maybe (fromJust)
 import qualified Data.Map as M
@@ -19,6 +19,18 @@ data MessageArgs = MessageArgs
   
 isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
 
+safeGetArg :: B.ByteString -> Int -> Maybe B.ByteString
+safeGetArg str index
+  | (length word - 1) >= index =
+    Just (word !! index)
+  | otherwise = Nothing
+  where word = B.words str
+  
+safeCheckArg :: B.ByteString -> Int -> Bool
+safeCheckArg str index = (length word - 1) >= index
+  where word = B.words str
+  
+  
 onMessage :: MVar MessageArgs -> EventFunc
 onMessage argsMVar s m
   | msg `isCmd` "hai" = do
@@ -28,13 +40,16 @@ onMessage argsMVar s m
   | msg `isCmd` "clear" = do
     modifyMVar_ argsMVar (\a -> return $ a {modules = []})
     sendMsg s chan "Modules cleared"
+  
   | msg `isCmd` "modules" = do
     args <- readMVar argsMVar
     let mods = modules args
     sendMsg s chan ("Available modules: " `B.append` (B.pack $ toString mods))
   
   | msg `isCmd` "quit"  = do
-    exitSuccess
+    args <- readMVar argsMVar
+    ifAdmin (users args) (B.unpack $ fromJust $ mNick m) exitSuccess
+            (sendMsg s chan "You need to be an admin to execute this command.")
   
   | msg `isCmd` "users" = do
     args <- readMVar argsMVar
@@ -43,6 +58,12 @@ onMessage argsMVar s m
     sendMsg s chan ("I have " `B.append` (B.pack $ show len) `B.append` " users, "
                     `B.append` (B.pack $ show admins) `B.append` " of which are Admins.")
   
+  | msg `isCmd` "online" && safeCheckArg msg 1  = do
+    args <- readMVar argsMVar
+    if checkOnline (users args) (B.unpack $ fromJust $ safeGetArg msg 1)
+      then sendMsg s chan "User is online"
+      else sendMsg s chan "User is offline"  
+  
   | msg `isCmd` "online" = do
     args <- readMVar argsMVar
     let onUsers = getLoggedin $ users args
@@ -50,7 +71,6 @@ onMessage argsMVar s m
       then sendMsg s chan 
            ("Users online: " `B.append` (B.pack $ onUsers))
       else sendMsg s chan "No users online"
-    
   
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
