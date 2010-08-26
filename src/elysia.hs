@@ -31,7 +31,7 @@ main = do
   users <- readUsers "users.ini"
   
   -- Create the MessageArgs MVar
-  argsMVar <- newMVar (MessageArgs mods users)
+  argsMVar <- newMVar (MessageArgs mods users [])
   
-  let events = [(Privmsg (onMessage argsMVar)), (Privmsg (onPrivateMessage argsMVar))]
+  let events = [(Privmsg (onMessage argsMVar)), (Privmsg (onPrivateMessage argsMVar)), (Numeric (collectServers argsMVar))]
   connectServers events

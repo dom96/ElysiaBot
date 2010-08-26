@@ -1,11 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Commands (onMessage, onPrivateMessage, safeCheckArg, MessageArgs(..)) where
+module Commands (onMessage, onPrivateMessage, safeCheckArg, collectServers, MessageArgs(..)) where
 import Network.SimpleIRC
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent.MVar
+import Control.Concurrent
 import System.Exit
+import System.Process
 
 import Modules
 import Users
@@ -15,6 +17,7 @@ prefix = "|" -- Move this to the configuration file/Types.hs
 data MessageArgs = MessageArgs
   { modules :: [IrcModule]
   , users   :: Users
+  , argServers :: [IrcServer]
   }
   
 isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
@@ -88,6 +91,18 @@ onMessage argsMVar s m
            ("Users online: " `B.append` (B.pack $ onUsers))
       else sendMsg s chan "No users online"
   
+  | msg `isCmd` "update" = do
+    args <- readMVar argsMVar
+    ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
+      (do sendMsg s chan "Starting update..."
+          forkIO $ do 
+            _ <- createProcess $ shell "sh updateElysia.sh >> update.log 2>&1"
+            return ()
+          sendMsg s chan "Exiting."
+          sendAll (argServers args) (MQuit "Update.")
+          exitSuccess)
+      (sendMsg s chan "You need to be an admin to execute this command.")
+      
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
     -- check if they are defined in the modules
@@ -143,8 +158,19 @@ changeStatus argsMVar state s m
         loginSuccess args m = do 
           _ <- swapMVar argsMVar (args {users = m})
           sendMsg s nick ("You are now logged " `B.append` strState)
-        
-
+          
+collectServers :: MVar MessageArgs -> EventFunc
+collectServers argsMVar s m
+  | mCode m == "001" = do
+    modifyMVar_ argsMVar (\a -> return a {argServers = s:(argServers a)})
+  | otherwise = return ()
+  
+-- Helpers
 (?) :: Bool -> (c, c) -> c
 (?) b (t, e) = if b then t else e
+
+sendAll :: [IrcServer] -> Command -> IO ()
+sendAll servers cmd = do
+  mapM (flip sendCmd cmd) servers
+  return ()
 
