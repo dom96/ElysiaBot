@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Modules (IrcModule(..), CmdFunc, loadMods, callCmds, toString, muteModule) where
+module Modules (IrcModule(..), CmdFunc, loadMods, callCmds, toString, muteModule, unmuteModule) where
 import Network.SimpleIRC
 
-import Data.List (intercalate, foldl')
+import Data.List (intercalate, foldl', delete)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 
@@ -51,7 +51,7 @@ callCmds prefix m pls s = do
 
 toString :: [IrcModule] -> String
 toString mods = 
-  let names = map (\m -> B.unpack $ mName m) mods
+  let names = map (B.unpack . mName) mods
   in intercalate (B.unpack ", ") names
 
 modElem :: B.ByteString -> [IrcModule] -> Bool
@@ -67,5 +67,13 @@ muteModule modules mod chan
                 ) modules
   | otherwise = Nothing
   
-
+unmuteModule :: [IrcModule] -> B.ByteString -> B.ByteString -> Maybe [IrcModule]
+unmuteModule modules mod chan
+  | mod `modElem` modules =
+    Just $ map (\m -> if mName m == mod 
+                         then m {mMutedChans = delete chan (mMutedChans m)}
+                         else m
+                ) modules
+  | otherwise = Nothing
+  
   

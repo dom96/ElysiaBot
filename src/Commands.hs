@@ -52,14 +52,18 @@ onMessage argsMVar s m
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m) exitSuccess
             (sendMsg s chan "You need to be an admin to execute this command.")
   
-  | msg `isCmd` "mute" && safeCheckArg msg 1  = do
+  | (msg `isCmd` "mute" || msg `isCmd` "unmute") && safeCheckArg msg 1  = do
     args <- readMVar argsMVar
+    let mod    = fromJust $ safeGetArg msg 1
+    let func   = (msg `isCmd` "mute") ? (muteModule, unmuteModule)
+    let result = func (modules args) mod chan
+    
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
-      (do let mod    = fromJust $ safeGetArg msg 1
-          let result = muteModule (modules args) mod chan
-          if isJust result
+      (do if isJust result
             then do _ <- swapMVar argsMVar (args {modules = fromJust $ result})
-                    sendMsg s chan "Module successfully muted."
+                    sendMsg s chan 
+                      ("Module successfully " `B.append`
+                      ((msg `isCmd` "mute") ? ("", "un")) `B.append` "muted.")
             else sendMsg s chan "Module not found.")
       (sendMsg s chan "You need to be an admin to execute this command.")
   
