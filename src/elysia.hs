@@ -48,14 +48,21 @@ elOpts args =
         (xs, n, []) -> return (foldl (flip id) defaultOptions xs, n)
         (_, _, errs) -> ioError (userError (concat errs ++ usageInfo header options))
 
-confToIRCConf :: String -> String -> String -> ConfigServer -> ([IrcEvent] -> IrcConfig)
+confToIRCConf :: String -> String -> String -> ConfigServer -> IrcConfig
 confToIRCConf nick usr real confServ =
-  IrcConfig (cnfAddr confServ) (cnfPort confServ) nick usr real (cnfChans confServ)
+  defaultConfig
+    { cAddr = (cnfAddr confServ)
+    , cPort = (cnfPort confServ)
+    , cNick = nick
+    , cUsername = usr
+    , cRealname = real
+    , cChannels = (cnfChans confServ)
+    }
 
 connectServers events = do
   conf <- readConfig "elysia.ini"
   let (nick, usr, real) = ((cnfNick conf), (cnfUser conf), (cnfReal conf)) 
-  let lConn t serv = connect (confToIRCConf nick usr real serv events) t True
+  let lConn t serv = connect ((confToIRCConf nick usr real serv) {cEvents = events}) t True
   mapM (lConn True) (drop 1 $ cnfServers conf)
   
   lConn False (cnfServers conf !! 0)
