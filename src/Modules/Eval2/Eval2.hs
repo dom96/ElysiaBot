@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Modules.Eval2.Eval2 (moduleCmds, moduleRaws) where
 import Network.SimpleIRC.Types
-import Data.Map
+import qualified Data.Map as M
 import Data.Maybe
 import Data.Either
 import qualified Data.ByteString.Char8 as B
@@ -9,15 +9,15 @@ import System.Process
 import Control.Concurrent
 import System.IO
 
-moduleCmds = empty
+moduleCmds = M.empty
 
-moduleRaws = fromList
+moduleRaws = M.fromList
   [(B.pack "> ", evalCode), (B.pack ":t ", getType)]
 
 evalCode m = do
   evalResult <- evalM (B.unpack (B.drop 2 msg))
   either (\err -> return $ "Error: " `B.append` (B.pack err))
-         (\(_, _, res) -> return $ "=> " `B.append` (B.pack $ res))
+         (\(_, _, res) -> return $ "=> " `B.append` (B.pack $ limitMsg 200 res))
          evalResult
   where msg = mMsg m
 
@@ -26,22 +26,26 @@ getType m  = do
   either (\err -> return $ "Error: " `B.append` (B.pack err))
          (\(expr, _, res) -> 
             return $ (B.pack $ code) `B.append` " :: "
-                     `B.append` (B.pack $ removeQuotes res))
+                     `B.append` (B.pack $ removeQuotes $ limitMsg 200 res))
          evalResult
   where msg = mMsg m
         code = removeStart ' ' (B.unpack (B.drop 2 msg))
  
 formatErr err
   | length e > 1 = 
-    let second = (take 28 $ e !! 1) ++ "..."
+    let second = (limitMsg 28 $ e !! 1)
     in first ++ "\n" ++ second
   | otherwise = first
   where e = take 2 $ lines err
-        first  = (take 350 $ e !! 0) 
+        first  = (limitMsg 350 $ e !! 0) 
+
+limitMsg limit xs = 
+  if length xs > limit
+    then take limit xs ++ "..."
+    else xs
 
 parseRet ret code 
   | (lines ret !! 0) /= code  = return $ Left $ formatErr ret
-  | (length $ lines ret) == 2 = return $ Left "Time limit exceeded"
   | (length $ lines ret) > 2  = do 
     let (expr, typ, result) = (lines ret !! 0, lines ret !! 1, lines ret !! 2)
     return $ Right (expr, typ, result)
@@ -52,14 +56,17 @@ escapeCode code =
 
 evalM code = do
   putStrLn $ "Executing...\n  mueval -i --expression \"" ++ (escapeCode code) ++ "\""
-  (inp,out,err,pid) <- runInteractiveCommand $ "mueval -i --expression \"" ++ (escapeCode code) ++ "\""
+  (inpH, outH, errH, pid) <- runInteractiveCommand $ "mueval -i --expression \"" ++ (escapeCode code) ++ "\""
   waitForProcess pid
-  ret <- hGetContents out
+  ret <- hGetContents outH
+  err <- hGetContents errH
   putStrLn $ "Got contents...\n  " ++ ret
-  parsed <- parseRet ret code
+  putStrLn $ "Got error...\n " ++ err
   
-  return parsed
-  
+  if null err
+    then do parsed <- parseRet ret code
+            return parsed
+    else return $ Left $ limitMsg 200 err
   
 removeStart p (x:xs)
   | x == p    = xs
