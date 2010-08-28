@@ -7,13 +7,14 @@ import qualified Data.Map as M
 import Control.Concurrent.MVar
 import System.Console.GetOpt
 import System.Environment
-import System.Posix.Daemonize
 import System.Exit
+import System.Posix.Daemonize
 
 import Modules
 import Config
 import Users
 import Commands
+
 
 data Options = Options
  {  
@@ -59,34 +60,43 @@ confToIRCConf nick usr real confServ =
     , cChannels = (cnfChans confServ)
     }
 
-connectServers events = do
-  conf <- readConfig "elysia.ini"
+connectServers events conf = do
   let (nick, usr, real) = ((cnfNick conf), (cnfUser conf), (cnfReal conf)) 
   let lConn t serv = connect ((confToIRCConf nick usr real serv) {cEvents = events}) t True
   mapM (lConn True) (drop 1 $ cnfServers conf)
   
   lConn False (cnfServers conf !! 0)
 
-main2 = do
+main = do
+  cmdArgs <- getArgs
+  (opts, _) <- elOpts cmdArgs
+  parseOpts opts
+  
   let mods = loadMods "modules"
   
   -- Load the users
   putStrLn "Loading users"
   users <- readUsers "users.ini"
   
+  -- Load the configuration
+  putStrLn "Loading configuration"
+  conf <- readConfig "elysia.ini"
+  
   -- Create the MessageArgs MVar
   argsMVar <- newMVar (MessageArgs mods users [])
   
   let events = [(Privmsg (onMessage argsMVar)), (Privmsg (onPrivateMessage argsMVar)), (Numeric (collectServers argsMVar))]
-  _ <- connectServers events
-  return ()
-
-main = do
-  cmdArgs <- getArgs
-  (opts, _) <- elOpts cmdArgs
-  parseOpts opts
+  let connect' = do _ <- connectServers events conf
+                    return ()
+  
+  -- All file loading(that is in elysia's directory) has to be done before calling
+  -- daemonize, because it changes the current working dir.
+  -- TODO:(Maybe) I suppose i could just get the current working directory
+  -- before calling daemonize, that's messy though. This way is cleaner.
+  -- Just remember the rule, all files must be loaded before here.
+  
   if optDaemon opts
-    then daemonize main2
-    else main2
+    then daemonize connect'
+    else connect'
   
 
