@@ -12,7 +12,9 @@ import System.IO
 moduleCmds = M.empty
 
 moduleRaws = M.fromList
-  [(B.pack "> ", evalCode), (B.pack ":t ", getType)]
+  [(B.pack "> ", evalCode)
+--  , (B.pack ":t ", getType)
+  ]
 
 evalCode m = do
   evalResult <- evalM (B.unpack (B.drop 2 msg))
@@ -52,7 +54,9 @@ parseRet ret code
   | otherwise                 = return $ Left $ "Unknown error. Received " ++ ret
 
 escapeCode code = 
-  concatMap (\c -> if c == '\"' then "\\\"" else [c]) code
+  concatMap (\c -> case c of '\"' -> "\\\""
+                             '`' -> "\\`"
+                             otherwise -> [c]) code
 
 evalM code = do
   putStrLn $ "Executing...\n  mueval -i --expression \"" ++ (escapeCode code) ++ "\""

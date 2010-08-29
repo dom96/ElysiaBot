@@ -9,6 +9,7 @@ import qualified Data.ByteString.Char8 as B
 -- Modules
 import qualified Modules.Hi.Hi as Hi
 import qualified Modules.Eval2.Eval2 as Eval2
+import qualified Modules.Hoogle.Hoogle as Hoogle
 
 type CmdFunc = (IrcMessage -> IO B.ByteString)
 type CmdMap  = M.Map B.ByteString CmdFunc
@@ -24,6 +25,7 @@ loadMods :: String -> [IrcModule]
 loadMods dir =
   [ IrcModule Hi.moduleCmds Hi.moduleRaws "Hi" []
   , IrcModule Eval2.moduleCmds Eval2.moduleRaws "Eval2" []
+  , IrcModule Hoogle.moduleCmds Hoogle.moduleRaws "Hoogle" []
   ]
 
 callCmd :: Maybe B.ByteString -> IrcMessage -> IrcModule -> IrcServer -> IO [B.ByteString]
