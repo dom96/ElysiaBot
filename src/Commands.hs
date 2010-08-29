@@ -55,6 +55,13 @@ onMessage argsMVar s m
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m) exitSuccess
             (sendMsg s chan "You need to be an admin to execute this command.")
   
+  | msg `isCmd` "join" && safeCheckArg msg 1 = do
+    args <- readMVar argsMVar
+    let chanToJoin = fromJust $ safeGetArg msg 1
+    ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
+            (sendCmd s $ MJoin chanToJoin Nothing)
+            (sendMsg s chan "You need to be an admin to execute this command.")
+  
   | (msg `isCmd` "mute" || msg `isCmd` "unmute") && safeCheckArg msg 1  = do
     args <- readMVar argsMVar
     let mod    = fromJust $ safeGetArg msg 1
