@@ -105,12 +105,12 @@ main = do
   let mods = loadMods "modules"
   
   -- Load the users
-  putStrLn "Loading users"
-  users <- readUsers $ "users.ini"
+  putStrLn $ "Loading users - " ++ currDir </> "elysia.ini"
+  users <- readUsers $ currDir </> "users.ini"
   
   -- Load the configuration
-  putStrLn "Loading configuration"
-  conf <- readConfig $ "elysia.ini"
+  putStrLn $ "Loading configuration - " ++ currDir </> "elysia.ini"
+  conf <- readConfig $ currDir </> "elysia.ini"
   
   -- Create the MessageArgs MVar
   argsMVar <- newMVar (MessageArgs mods users [])
