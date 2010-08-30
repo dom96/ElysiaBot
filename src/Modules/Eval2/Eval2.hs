@@ -60,7 +60,7 @@ escapeCode code =
 
 evalM code = do
   putStrLn $ "Executing...\n  mueval -i --expression \"" ++ (escapeCode code) ++ "\""
-  (inpH, outH, errH, pid) <- runInteractiveCommand $ "mueval -i --expression \"" ++ (escapeCode code) ++ "\""
+  (inpH, outH, errH, pid) <- runInteractiveProcess "mueval" ["-i","--expression", code] Nothing Nothing
   waitForProcess pid
   ret <- hGetContents outH
   err <- hGetContents errH

@@ -42,14 +42,13 @@ limitMsg limit xs =
 
 escape :: String -> String -> String
 escape "-" ('>':rest) = '#':(escape ">" rest)
-escape _ ('\"':rest)  = "\\\"" ++ (escape "\"" rest)
-escape _ ('`':rest)   = "\\`" ++ (escape "`" rest)
+
 escape _ (cur:rest)   = cur:(escape [cur] rest)
 escape _ xs           = xs
 
 findM code = do
   putStrLn $ "Executing...\n  hoogle " ++ (escape [] code)
-  (inpH, outH, errH, pid) <- runInteractiveCommand $ "hoogle " ++ (escape [] code)
+  (inpH, outH, errH, pid) <- runInteractiveProcess "hoogle" (words $ escape [] code) Nothing Nothing
   waitForProcess pid
   ret <- hGetContents outH
   err <- hGetContents errH
