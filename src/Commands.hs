@@ -8,6 +8,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent
 import System.Exit
 import System.Process
+import System.FilePath
 
 import Modules
 import Users
@@ -98,18 +99,6 @@ onMessage argsMVar s m
            ("Users online: " `B.append` (B.pack $ onUsers))
       else sendMsg s chan "No users online"
   
-  | msg `isCmd` "update" = do
-    args <- readMVar argsMVar
-    ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
-      (do sendMsg s chan "Starting update..."
-          forkIO $ do 
-            _ <- createProcess $ shell "sh updateElysia.sh >> update.log 2>&1"
-            return ()
-          sendMsg s chan "Exiting."
-          sendAll (argServers args) (MQuit "Update.")
-          exitSuccess)
-      (sendMsg s chan "You need to be an admin to execute this command.")
-      
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
     -- check if they are defined in the modules

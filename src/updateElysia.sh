@@ -1,19 +1,16 @@
 #!/bin/sh
-rm update.log
+git pull origin master
 
-echo "Killing ElysiaBot just in case"
-pkill elysia
+mv elysia elysiaBCK
 
-git pull origin master >> update.log 2>&1
-
-rm elysia
-
-ghc -fforce-recomp --make elysia.hs >> update.log 2>&1
+ghc --make elysia.hs
 
 if [ -f "elysia" ]; then
   echo "Success!"
+  rm elysiaBCK
   echo "Executing ElysiaBot"
-  ./elysia
+
+  ./elysia -d
 else
-  echo "!!-Error-!!< Compilation failed."
+  echo "!!-Error-!! Compilation failed."
 fi
