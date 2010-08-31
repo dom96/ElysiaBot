@@ -89,9 +89,12 @@ isRunning conf = do
     else return ()
 
 stopElysia = do
-  conf <- readConfig $ "elysia.ini"
+  appDatDir <- getAppUserDataDirectory "ElysiaBot"
+
+  conf <- readConfig $ appDatDir </> "elysia.ini"
   pid <- readFile (cnfPidFile conf)
-  signalProcess sigTERM (read $ (lines pid) !! 0)
+  catch (signalProcess sigTERM (read $ (lines pid) !! 0))
+        (putStrLn . show)
   removeFile (cnfPidFile conf)
   exitSuccess
 
@@ -100,17 +103,17 @@ main = do
   (opts, _) <- elOpts cmdArgs
   parseOpts opts
   
-  currDir <- getCurrentDirectory
+  appDatDir <- getAppUserDataDirectory "ElysiaBot"
   
   let mods = loadMods "modules"
   
   -- Load the users
-  putStrLn $ "Loading users - " ++ currDir </> "elysia.ini"
-  users <- readUsers $ currDir </> "users.ini"
+  putStrLn $ "Loading users - " ++ appDatDir </> "users.ini"
+  users <- readUsers $ appDatDir </> "users.ini"
   
   -- Load the configuration
-  putStrLn $ "Loading configuration - " ++ currDir </> "elysia.ini"
-  conf <- readConfig $ currDir </> "elysia.ini"
+  putStrLn $ "Loading configuration - " ++ appDatDir </> "elysia.ini"
+  conf <- readConfig $ appDatDir </> "elysia.ini"
   
   -- Create the MessageArgs MVar
   argsMVar <- newMVar (MessageArgs mods users [])
