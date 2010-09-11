@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Modules.Hoogle.Hoogle (moduleCmds, moduleRaws, escape) where
-import Network.SimpleIRC.Types
+import Network.SimpleIRC
 import qualified Data.Map as M
 import Data.Maybe
 import Data.Either

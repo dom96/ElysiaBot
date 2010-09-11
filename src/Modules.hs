@@ -30,26 +30,27 @@ loadMods dir =
   , IrcModule GDict.moduleCmds GDict.moduleRaws "Dictionary" []
   ]
 
-callCmd :: Maybe B.ByteString -> IrcMessage -> IrcModule -> IrcServer -> IO [B.ByteString]
-callCmd prefix m pl s
-  | (getChan s m) `elem` (mMutedChans pl) = 
-    -- If this module is muted in this channel, don't output anything.
-    return [(B.pack "")]
-  | otherwise = do
-    case prefix of
-      (Just p) -> do
-        -- Drop the prefix, and take just the first word.
-        let cmd = B.drop (B.length p) ((B.words $ mMsg m) !! 0)
-        -- Filter for the correct function.
-        let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mCmds pl) 
-        mapM (\c -> (snd c) m) (M.toList f)
-      Nothing  -> do
-        let cmd = mMsg m
-        let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mRaws pl) 
-        mapM (\c -> (snd c) m) (M.toList f)
+-- TODO: Make this cleaner?
+callCmd :: Maybe B.ByteString -> IrcMessage -> IrcModule -> MIrc -> IO [B.ByteString]
+callCmd prefix m pl s = do
+  dest <- getDest s m
+  if dest `elem` (mMutedChans pl)
+    then -- If this module is muted in this channel, don't output anything.
+         return [B.empty]
+    else case prefix of
+           (Just p) -> do
+              -- Drop the prefix, and take just the first word.
+              let cmd = B.drop (B.length p) ((B.words $ mMsg m) !! 0)
+              -- Filter for the correct function.
+              let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mCmds pl) 
+              mapM (\c -> (snd c) m) (M.toList f)
+           Nothing  -> do
+              let cmd = mMsg m
+              let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mRaws pl) 
+              mapM (\c -> (snd c) m) (M.toList f)
 
 
-callCmds :: Maybe B.ByteString -> IrcMessage -> [IrcModule] -> IrcServer -> IO [[B.ByteString]]
+callCmds :: Maybe B.ByteString -> IrcMessage -> [IrcModule] -> MIrc -> IO [[B.ByteString]]
 callCmds prefix m pls s = do
   mapM (\pl -> callCmd prefix m pl s) pls
 

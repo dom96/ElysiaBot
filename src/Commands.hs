@@ -18,7 +18,7 @@ prefix = "|" -- Move this to the configuration file/Types.hs
 data MessageArgs = MessageArgs
   { modules :: [IrcModule]
   , users   :: Users
-  , argServers :: [IrcServer]
+  , argServers :: [MIrc]
   }
   
 isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
@@ -34,102 +34,108 @@ safeGetArg str index
 safeCheckArg :: B.ByteString -> Int -> Bool
 safeCheckArg str index = (length word - 1) >= index
   where word = B.words str
-  
-  
-onMessage :: MVar MessageArgs -> EventFunc
-onMessage argsMVar s m
+
+cmdHandler :: MVar MessageArgs -> MIrc -> IrcMessage -> B.ByteString -> IO ()
+cmdHandler argsMVar mIrc m dest
   | msg `isCmd` "hai" = do
-    sendMsg s chan "hai thar!"
+    sendMsg mIrc dest "hai thar!"
   | msg `isCmd` "say" = do
-    sendMsg s chan (B.drop 1 $ B.dropWhile (/= ' ') msg)
+    sendMsg mIrc dest (B.drop 1 $ B.dropWhile (/= ' ') msg)
   | msg `isCmd` "clear" = do
     modifyMVar_ argsMVar (\a -> return $ a {modules = []})
-    sendMsg s chan "Modules cleared"
+    sendMsg mIrc dest "Modules cleared"
   
   | msg `isCmd` "modules" = do
     args <- readMVar argsMVar
     let mods = modules args
-    sendMsg s chan ("Available modules: " `B.append` (B.pack $ toString mods))
+    sendMsg mIrc dest ("Available modules: " `B.append` (B.pack $ toString mods))
   
   | msg `isCmd` "quit"  = do
     args <- readMVar argsMVar
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m) exitSuccess
-            (sendMsg s chan "You need to be an admin to execute this command.")
+            (sendMsg mIrc dest "You need to be an admin to execute this command.")
   
   | msg `isCmd` "join" && safeCheckArg msg 1 = do
     args <- readMVar argsMVar
     let chanToJoin = fromJust $ safeGetArg msg 1
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
-            (sendCmd s $ MJoin chanToJoin Nothing)
-            (sendMsg s chan "You need to be an admin to execute this command.")
+            (sendCmd mIrc $ MJoin chanToJoin Nothing)
+            (sendMsg mIrc dest "You need to be an admin to execute this command.")
   
   | (msg `isCmd` "mute" || msg `isCmd` "unmute") && safeCheckArg msg 1  = do
     args <- readMVar argsMVar
     let mod    = fromJust $ safeGetArg msg 1
     let func   = (msg `isCmd` "mute") ? (muteModule, unmuteModule)
-    let result = func (modules args) mod chan
+    let result = func (modules args) mod dest
     
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
       (do if isJust result
             then do _ <- swapMVar argsMVar (args {modules = fromJust $ result})
-                    sendMsg s chan 
+                    sendMsg mIrc dest 
                       ("Module successfully " `B.append`
                       ((msg `isCmd` "mute") ? ("", "un")) `B.append` "muted.")
-            else sendMsg s chan "Module not found.")
-      (sendMsg s chan "You need to be an admin to execute this command.")
+            else sendMsg mIrc dest "Module not found.")
+      (sendMsg mIrc dest "You need to be an admin to execute this command.")
   
   | msg `isCmd` "users" = do
     args <- readMVar argsMVar
     let len    = length $ M.toList $ users args
     let admins = M.fold (\a b -> if uAdmin a then b + 1 else b) 0 (users args)
-    sendMsg s chan ("I have " `B.append` (B.pack $ show len) `B.append` " users, "
+    sendMsg mIrc dest ("I have " `B.append` (B.pack $ show len) `B.append` " users, "
                     `B.append` (B.pack $ show admins) `B.append` " of which are Admins.")
   
   | msg `isCmd` "online" && safeCheckArg msg 1  = do
     args <- readMVar argsMVar
     if checkOnline (users args) (B.unpack $ fromJust $ safeGetArg msg 1)
-      then sendMsg s chan "User is online"
-      else sendMsg s chan "User is offline"  
+      then sendMsg mIrc dest "User is online"
+      else sendMsg mIrc dest "User is offline"  
   
   | msg `isCmd` "online" = do
     args <- readMVar argsMVar
     let onUsers = getLoggedin $ users args
     if not $ null onUsers
-      then sendMsg s chan 
+      then sendMsg mIrc dest 
            ("Users online: " `B.append` (B.pack $ onUsers))
-      else sendMsg s chan "No users online"
+      else sendMsg mIrc dest "No users online"
   
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
     -- check if they are defined in the modules
     args <- readMVar argsMVar
     let mods = modules args
-    ret <- callCmds (Just prefix) m mods s
-    mapM (\plM -> sendMsg s chan (plM)) (concat ret)
+    ret <- callCmds (Just prefix) m mods mIrc
+    mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
     
     putStrLn $ show $ length $ concat ret
     
   | otherwise = do
     args <- readMVar argsMVar
     let mods = modules args
-    ret <- callCmds Nothing m mods s
-    mapM (\plM -> sendMsg s chan (plM)) (concat ret)
+    ret <- callCmds Nothing m mods mIrc
+    mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
     
     putStrLn $ show $ length $ concat ret
   
     return ()
-  where chan = getChan s m
-        msg  = mMsg m
+  where msg  = mMsg m
+
+onMessage :: MVar MessageArgs -> EventFunc
+onMessage argsMVar s m = do
+  dest <- getDest s m
+  
+  cmdHandler argsMVar s m dest
+
 
 onPrivateMessage :: MVar MessageArgs -> EventFunc
-onPrivateMessage argsMVar s m
-  | sNickname s == (fromJust $ mChan m) = do
-    case (lineM !! 0) of
-      "login"   -> changeStatus argsMVar True s m 
-      "logout"  -> changeStatus argsMVar False s m
-      otherwise -> return ()
+onPrivateMessage argsMVar s m = do
+  nick <- getNickname s
+  if nick == (fromJust $ mChan m)
+    then do case (lineM !! 0) of
+              "login"   -> changeStatus argsMVar True s m 
+              "logout"  -> changeStatus argsMVar False s m
+              otherwise -> return ()
     
-  | otherwise = return ()
+    else return ()
   where msg   = mMsg m
         lineM = B.words msg
 
@@ -165,7 +171,7 @@ collectServers argsMVar s m
 (?) :: Bool -> (c, c) -> c
 (?) b (t, e) = if b then t else e
 
-sendAll :: [IrcServer] -> Command -> IO ()
+sendAll :: [MIrc] -> Command -> IO ()
 sendAll servers cmd = do
   mapM (flip sendCmd cmd) servers
   return ()
