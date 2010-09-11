@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Modules.GDict.GDict (moduleCmds, moduleRaws) where
+module Modules.GDict.GDict (moduleCmds, moduleRaws, onLoad) where
 import Network.SimpleIRC
 import qualified Data.Map as M
 import Data.Maybe
@@ -15,6 +15,8 @@ moduleCmds = M.fromList
   [(B.pack "dict", find)]
 
 moduleRaws = M.empty
+
+onLoad = putStrLn "GDict loaded *worships*"
 
 find m = do
   evalResult <- lookupDict searchTerm

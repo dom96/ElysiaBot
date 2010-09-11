@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Modules.Hi.Hi (moduleCmds, moduleRaws, msg) where
+module Modules.Hi.Hi (moduleCmds, moduleRaws, onLoad) where
 import Network.SimpleIRC
 import qualified Data.ByteString.Char8 as B
 import Data.Map
@@ -9,6 +9,9 @@ moduleCmds = fromList
   [(B.pack "hi", msg)]
 
 moduleRaws = empty
+
+onLoad :: IO ()
+onLoad = return ()
 
 test :: Bool -> Maybe B.ByteString
 test False = Nothing

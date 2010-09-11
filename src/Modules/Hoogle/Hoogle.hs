@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Modules.Hoogle.Hoogle (moduleCmds, moduleRaws, escape) where
+module Modules.Hoogle.Hoogle (moduleCmds, moduleRaws, onLoad) where
 import Network.SimpleIRC
 import qualified Data.Map as M
 import Data.Maybe
@@ -14,6 +14,9 @@ moduleCmds = M.fromList
 
 moduleRaws = M.fromList
   [(B.pack ":t ", getType)]
+
+onLoad :: IO ()
+onLoad = return ()
 
 find m = do
   evalResult <- findM searchTerm

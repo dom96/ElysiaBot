@@ -105,7 +105,7 @@ main = do
   
   appDatDir <- getAppUserDataDirectory "ElysiaBot"
   
-  let mods = loadMods "modules"
+  mods <- loadMods "modules"
   
   -- Load the users
   putStrLn $ "Loading users - " ++ appDatDir </> "users.ini"

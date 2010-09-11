@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Modules.Eval2.Eval2 (moduleCmds, moduleRaws) where
+module Modules.Eval2.Eval2 (moduleCmds, moduleRaws, onLoad) where
 import Network.SimpleIRC
 import qualified Data.Map as M
 import Data.Maybe
@@ -15,6 +15,9 @@ moduleRaws = M.fromList
   [(B.pack "> ", evalCode)
 --  , (B.pack ":t ", getType)
   ]
+
+onLoad :: IO ()
+onLoad = return ()
 
 evalCode m = do
   evalResult <- evalM (B.unpack (B.drop 2 msg))

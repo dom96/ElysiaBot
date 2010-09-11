@@ -11,6 +11,7 @@ import qualified Modules.Hi.Hi as Hi
 import qualified Modules.Eval2.Eval2 as Eval2
 import qualified Modules.Hoogle.Hoogle as Hoogle
 import qualified Modules.GDict.GDict as GDict
+import qualified Modules.Github.Github as Github
 
 type CmdFunc = (IrcMessage -> IO B.ByteString)
 type CmdMap  = M.Map B.ByteString CmdFunc
@@ -22,13 +23,21 @@ data IrcModule = IrcModule
   , mMutedChans :: [B.ByteString]
   }
 
-loadMods :: String -> [IrcModule]
-loadMods dir =
-  [ IrcModule Hi.moduleCmds Hi.moduleRaws "Hi" []
-  , IrcModule Eval2.moduleCmds Eval2.moduleRaws "Eval2" []
-  , IrcModule Hoogle.moduleCmds Hoogle.moduleRaws "Hoogle" []
-  , IrcModule GDict.moduleCmds GDict.moduleRaws "Dictionary" []
-  ]
+loadMods :: String -> IO [IrcModule]
+loadMods dir = do
+  Hi.onLoad
+  Eval2.onLoad
+  Hoogle.onLoad
+  GDict.onLoad
+  Github.onLoad
+
+  return $
+    [ IrcModule Hi.moduleCmds Hi.moduleRaws "Hi" []
+    , IrcModule Eval2.moduleCmds Eval2.moduleRaws "Eval2" []
+    , IrcModule Hoogle.moduleCmds Hoogle.moduleRaws "Hoogle" []
+    , IrcModule GDict.moduleCmds GDict.moduleRaws "Dictionary" []
+    , IrcModule Github.moduleCmds Github.moduleRaws "GitHub" []
+    ]
 
 -- TODO: Make this cleaner?
 callCmd :: Maybe B.ByteString -> IrcMessage -> IrcModule -> MIrc -> IO [B.ByteString]
