@@ -90,7 +90,7 @@ listenLoop s serversM = do
   correctReq <- serverReply h method
   servers <- readMVar serversM
   
-  if isJust $ correctReq && "github.com" `isSuffixOf` hn
+  if (isJust correctReq) && "github.com" `isSuffixOf` hn
     then do let (addr, chan) = fromJust correctReq
             contents <- getAllContents h
             let body   = urlDecode $ getBody2 $ lines contents
