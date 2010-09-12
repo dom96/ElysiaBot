@@ -1,11 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Modules (IrcModule(..), CmdFunc, loadMods, callCmds, toString, muteModule, unmuteModule) where
+module Modules (IrcModule(..), CmdFunc, MessageArgs(..), loadMods, callCmds, toString, muteModule, unmuteModule) where
 import Network.SimpleIRC
 
 import Data.List (intercalate, foldl', delete)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent.MVar (MVar)
+
+import Types
 
 -- Modules
 import qualified Modules.Hi.Hi as Hi
@@ -14,55 +16,49 @@ import qualified Modules.Hoogle.Hoogle as Hoogle
 import qualified Modules.GDict.GDict as GDict
 import qualified Modules.Github.Github as Github
 
-type CmdFunc = (IrcMessage -> IO B.ByteString)
-type CmdMap  = M.Map B.ByteString CmdFunc
 
-data IrcModule = IrcModule
-  { mCmds :: CmdMap
-  , mRaws :: CmdMap
-  , mName :: B.ByteString
-  , mMutedChans :: [B.ByteString]
-  }
 
-loadMods :: String -> MVar [MIrc] -> IO [IrcModule]
-loadMods dir serversM = do
-  Hi.onLoad --serversM
-  Eval2.onLoad --serversM
-  Hoogle.onLoad --serversM
-  GDict.onLoad --serversM
-  Github.onLoad serversM
+loadMods :: String -> String -> MVar [MIrc] -> IO [IrcModule]
+loadMods dir appData serversM = do
+  Hi.onLoad serversM appData
+  Eval2.onLoad serversM appData
+  Hoogle.onLoad serversM appData
+  GDict.onLoad serversM appData
+  githubCmds <- Github.onLoad serversM appData
 
   return $
     [ IrcModule Hi.moduleCmds Hi.moduleRaws "Hi" []
     , IrcModule Eval2.moduleCmds Eval2.moduleRaws "Eval2" []
     , IrcModule Hoogle.moduleCmds Hoogle.moduleRaws "Hoogle" []
     , IrcModule GDict.moduleCmds GDict.moduleRaws "Dictionary" []
-    , IrcModule Github.moduleCmds Github.moduleRaws "GitHub" []
+    , IrcModule githubCmds Github.moduleRaws "GitHub" []
     ]
 
 -- TODO: Make this cleaner?
-callCmd :: Maybe B.ByteString -> IrcMessage -> IrcModule -> MIrc -> IO [B.ByteString]
-callCmd prefix m pl s = do
+callCmd :: Maybe B.ByteString -> MVar MessageArgs ->
+           IrcMessage -> IrcModule -> MIrc -> IO [B.ByteString]
+callCmd prefix args m pl s = do
   dest <- getDest s m
   if dest `elem` (mMutedChans pl)
     then -- If this module is muted in this channel, don't output anything.
          return [B.empty]
     else case prefix of
            (Just p) -> do
-              -- Drop the prefix, and take just the first word.
-              let cmd = B.drop (B.length p) ((B.words $ mMsg m) !! 0)
+              -- Drop the prefix
+              let cmd = B.drop (B.length p) (mMsg m)
               -- Filter for the correct function.
               let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mCmds pl) 
-              mapM (\c -> (snd c) m) (M.toList f)
+              mapM (\c -> (snd c) args m) (M.toList f)
            Nothing  -> do
               let cmd = mMsg m
               let f = M.filterWithKey (\k _ -> k `B.isPrefixOf` cmd) (mRaws pl) 
-              mapM (\c -> (snd c) m) (M.toList f)
+              mapM (\c -> (snd c) args m) (M.toList f)
 
 
-callCmds :: Maybe B.ByteString -> IrcMessage -> [IrcModule] -> MIrc -> IO [[B.ByteString]]
-callCmds prefix m pls s = do
-  mapM (\pl -> callCmd prefix m pl s) pls
+callCmds :: Maybe B.ByteString -> MVar MessageArgs -> 
+            IrcMessage -> [IrcModule] -> MIrc -> IO [[B.ByteString]]
+callCmds prefix args m pls s = do
+  mapM (\pl -> callCmd prefix args m pl s) pls
 
 toString :: [IrcModule] -> String
 toString mods = 

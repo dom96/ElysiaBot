@@ -12,14 +12,9 @@ import System.FilePath
 
 import Modules
 import Users
+import Types
 
 prefix = "|" -- Move this to the configuration file/Types.hs
-
-data MessageArgs = MessageArgs
-  { modules :: [IrcModule]
-  , users   :: Users
-  , argServers :: MVar [MIrc]
-  }
   
 isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
 
@@ -103,7 +98,7 @@ cmdHandler argsMVar mIrc m dest
     -- check if they are defined in the modules
     args <- readMVar argsMVar
     let mods = modules args
-    ret <- callCmds (Just prefix) m mods mIrc
+    ret <- callCmds (Just prefix) argsMVar m mods mIrc
     mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
     
     putStrLn $ (show $ length $ concat ret) ++ " prefixed commands replied to."
@@ -111,7 +106,7 @@ cmdHandler argsMVar mIrc m dest
   | otherwise = do
     args <- readMVar argsMVar
     let mods = modules args
-    ret <- callCmds Nothing m mods mIrc
+    ret <- callCmds Nothing argsMVar m mods mIrc
     mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
     
     putStrLn $ (show $ length $ concat ret) ++ " raw commands replied to."

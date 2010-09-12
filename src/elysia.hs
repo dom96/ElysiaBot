@@ -108,7 +108,7 @@ main = do
   -- Create a new MVar to store the servers
   serversMVar <- newMVar ([] :: [MIrc])
   
-  mods <- loadMods "modules" serversMVar
+  mods <- loadMods "modules" appDatDir serversMVar
   
   -- Load the users
   putStrLn $ "Loading users - " ++ appDatDir </> "users.ini"

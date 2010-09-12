@@ -5,9 +5,11 @@ import qualified Data.Map as M
 import Data.Maybe
 import Data.Either
 import qualified Data.ByteString.Char8 as B
+import Control.Concurrent.MVar (MVar)
 import System.Process
 import Control.Concurrent
 import System.IO
+import Types
 
 moduleCmds = M.fromList
   [(B.pack "hoogle", find)]
@@ -15,10 +17,11 @@ moduleCmds = M.fromList
 moduleRaws = M.fromList
   [(B.pack ":t ", getType)]
 
-onLoad :: IO ()
-onLoad = return ()
+onLoad :: MVar [MIrc] -> String -> IO ()
+onLoad _ _ = return ()
 
-find m = do
+find :: MVar MessageArgs -> IrcMessage -> IO B.ByteString
+find _ m = do
   evalResult <- findM searchTerm
   either (\err -> return $ "Error: " `B.append` (B.pack err))
          (\res -> return $ (B.pack $ limitLines 200 4 res))
@@ -26,7 +29,8 @@ find m = do
   where msg = mMsg m
         searchTerm = (B.unpack $ B.unwords (drop 1 $ B.words msg))
 
-getType m  = do
+getType :: MVar MessageArgs -> IrcMessage -> IO B.ByteString
+getType _ m  = do
   evalResult <- findM (code)
   either (\err -> return $ "Error: " `B.append` (B.pack err))
          (\res -> 

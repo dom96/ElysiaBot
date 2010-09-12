@@ -7,7 +7,9 @@ import Data.Either
 import qualified Data.ByteString.Char8 as B
 import System.Process
 import Control.Concurrent
+import Control.Concurrent.MVar (MVar)
 import System.IO
+import Types
 
 moduleCmds = M.empty
 
@@ -16,17 +18,18 @@ moduleRaws = M.fromList
 --  , (B.pack ":t ", getType)
   ]
 
-onLoad :: IO ()
-onLoad = return ()
+onLoad :: MVar [MIrc] -> String -> IO ()
+onLoad _ _ = return ()
 
-evalCode m = do
+evalCode :: MVar MessageArgs -> IrcMessage -> IO B.ByteString
+evalCode _ m = do
   evalResult <- evalM (B.unpack (B.drop 2 msg))
   either (\err -> return $ "Error: " `B.append` (B.pack err))
          (\(_, _, res) -> return $ "=> " `B.append` (B.pack $ limitMsg 200 res))
          evalResult
   where msg = mMsg m
 
-getType m  = do
+getType _ m  = do
   evalResult <- evalM ("showsTypeRep (typeOf (" ++ code ++ ")) \"\"")
   either (\err -> return $ "Error: " `B.append` (B.pack err))
          (\(expr, _, res) -> 

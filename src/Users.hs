@@ -6,13 +6,8 @@ import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.List  (intercalate)
 import "mtl" Control.Monad.Error
-type Users = M.Map String User -- nick -> User
 
-data User = User
-  { uPass     :: String
-  , uAdmin    :: Bool
-  , uLoggedin :: Bool
-  } deriving Show
+import Types
 
 readUsers filename = do
   readfile emptyCP filename >>= getData . handleError

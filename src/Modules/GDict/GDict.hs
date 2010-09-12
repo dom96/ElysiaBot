@@ -7,18 +7,22 @@ import Data.Either
 import qualified Data.ByteString.Char8 as B
 import System.Process
 import Control.Concurrent
+import Control.Concurrent.MVar (MVar)
 import System.IO
 import Control.Exception
 import Modules.GDict.GDictParse
+import Types
 
 moduleCmds = M.fromList
   [(B.pack "dict", find)]
 
 moduleRaws = M.empty
 
-onLoad = putStrLn "GDict loaded *worships*"
+onLoad :: MVar [MIrc] -> String -> IO ()
+onLoad _ _ = putStrLn "GDict loaded *worships*"
 
-find m = do
+find :: MVar MessageArgs -> IrcMessage -> IO B.ByteString
+find _ m = do
   evalResult <- lookupDict searchTerm
   either (\err -> return $ (B.pack err))
          (\res -> return $ B.pack $ limitMsg 200 (formatParsed res))
