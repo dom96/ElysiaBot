@@ -126,6 +126,8 @@ main = do
   -- All file loading(that is in elysia's directory) has to be done before calling
   -- daemonize, because it changes the current working dir.
   
+  -- TODO: Get rid of hdaemonize, it only causes problems...
+  
   if optDaemon opts
     then do isRunning conf -- Exit if elysia is already running.
             putStrLn "Starting as a daemon."

@@ -8,6 +8,7 @@ import Control.Concurrent
 import Network
 import System.IO
 import Network.HTTP.Headers
+import Network.HTTP.Base
 import Data.List
 
 moduleCmds = M.empty
@@ -36,20 +37,25 @@ listenLoop s = do
   putStrLn $ "Method =: " ++ method
   if "POST " `isPrefixOf` method
     then do hPutStrLn h "HTTP/1.0 200 OK"
-            hPutStrLn h "Content-Length: 0" -- The body + \n
+            hPutStrLn h "Content-Length: 0"
+            hPutStrLn h "Server: ElysiaBot"
             hPutStrLn h ""
-            hFlush h
     else do hPutStrLn h "HTTP/1.0 405 Method Not Allowed"
-            hPutStrLn h "Content-Length: 22"
+            -- I have absolutely no idea what that '+ 1' is needed for.
+            hPutStrLn h ("Content-Length: " ++ (show $ length errBody + 1))
+            hPutStrLn h "Server: ElysiaBot"
             hPutStrLn h ""
-            hPutStrLn h "<p>Not Allowed!!!</p>"
-            hFlush h
-  
-  --body  <- getBody h False
-  contents <- getAllContents h
+            hPutStrLn h errBody
 
-  putStrLn (getBody2 $ lines contents)
+  contents <- getAllContents h
+  let body = getBody2 $ lines contents
+
+  putStrLn $ urlDecode body
   listenLoop s
+
+  where errBody = 
+          "<p>OMG LOOK IT'S A TEAPOT!</p>\n" ++
+          "<img src=\"http://jamorama.com/blog/wp-content/uploads/2009/10/teapot6bk1.jpg\"/>\n"
 
 onLoad :: IO ()
 onLoad = do 
