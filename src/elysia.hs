@@ -105,7 +105,10 @@ main = do
   
   appDatDir <- getAppUserDataDirectory "ElysiaBot"
   
-  mods <- loadMods "modules"
+  -- Create a new MVar to store the servers
+  serversMVar <- newMVar ([] :: [MIrc])
+  
+  mods <- loadMods "modules" serversMVar
   
   -- Load the users
   putStrLn $ "Loading users - " ++ appDatDir </> "users.ini"
@@ -116,7 +119,7 @@ main = do
   conf <- readConfig $ appDatDir </> "elysia.ini"
   
   -- Create the MessageArgs MVar
-  argsMVar <- newMVar (MessageArgs mods users [])
+  argsMVar <- newMVar (MessageArgs mods users serversMVar)
   
   let events = [(Privmsg (onMessage argsMVar)), (Privmsg (onPrivateMessage argsMVar)), (Numeric (collectServers argsMVar))]
   let connect' = do writePID conf

@@ -5,12 +5,14 @@ import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
 import Data.Maybe
 import Control.Concurrent
+import Control.Concurrent.MVar
 import Network
 import System.IO
 import Network.HTTP.Headers
 import Network.HTTP.Base
 import Data.List
 import Control.Monad
+import Modules.Github.ParsePayload
 
 moduleCmds = M.empty
 
@@ -36,15 +38,17 @@ getMethod h = do
     then hGetLine h
     else return ""
 
-serverReply :: Handle -> String -> IO Bool
+serverReply :: Handle -> String -> IO (Maybe (String, String))
 serverReply h method
   | "POST " `isPrefixOf` method = do
     hPutStrLn h "HTTP/1.0 200 OK"
     hPutStrLn h "Content-Length: 0"
     hPutStrLn h "Server: ElysiaBot"
     hPutStrLn h ""
-    return True
-  | method == "" = return False
+    
+    return $ Just $ break (== '/') (drop 6 method)
+
+  | method == "" = return Nothing
   | otherwise    = do
     hPutStrLn h "HTTP/1.0 405 Method Not Allowed"
     -- I have absolutely no idea what that '+ 1' is needed for.
@@ -53,12 +57,19 @@ serverReply h method
     hPutStrLn h "Server: ElysiaBot"
     hPutStrLn h ""
     hPutStrLn h errBody
-    return False
+    return Nothing
   where errBody = 
           "<p>OMG LOOK IT'S A TEAPOT!</p>\n" ++
           "<img src=\"http://jamorama.com/blog/wp-content/uploads/2009/10/teapot6bk1.jpg\"/>\n"
 
-listenLoop s = do
+announce :: String -> String -> [MIrc] -> String -> IO ()
+announce servAddr chan servers msg = do
+  forM_ servers (\s -> do
+    addr <- getAddress s
+    when ((B.unpack addr) == servAddr)
+         (sendMsg s (B.pack chan) (B.pack msg)))
+
+listenLoop s serversM = do
   (h, hn, port) <- accept s
   hSetBuffering h LineBuffering
   putStrLn $ "Got connection from " ++ hn
@@ -69,19 +80,52 @@ listenLoop s = do
   putStrLn $ "Method =: " ++ method
   
   correctReq <- serverReply h method
+  servers <- readMVar serversM
   
-  if correctReq 
-    then do contents <- getAllContents h
-            let body = getBody2 $ lines contents
-
-            putStrLn $ urlDecode body
+  if isJust $ correctReq 
+    then do let (addr, chan) = fromJust correctReq
+            contents <- getAllContents h
+            let body   = urlDecode $ getBody2 $ lines contents
+                parsed = parseAll body
+            
+            either (\e -> putStrLn $ "ParseError! - " ++ e)
+                   (\p -> announce addr chan servers (formatOutput p))
+                   parsed
+            
             hClose h
     else hClose h
   
-  listenLoop s
+  listenLoop s serversM
 
-onLoad :: IO ()
-onLoad = do 
+-- dom96/SimpleIRC - 3 commits on refs/heads/master.
+-- dom96: +[whatever.hs, this.hs... 5] -[blah.hs] +-[that.hs] Message
+-- dom96: +-[that.hs] Message
+
+formatOutput :: Payload -> String
+formatOutput payload = 
+  (a_name (owner $ repository payload)) ++ "/" ++ (name $ repository payload) ++ " - " ++
+  (show $ length (commits payload)) ++ " commits on " ++ (formatRef $ ref payload) ++
+  ".\n" ++ (unlines $ take 3 (map formatCommit (commits payload)))
+
+formatRef ref
+  | "refs/heads/" `isPrefixOf` ref =
+    drop 11 ref
+  | otherwise = ref
+
+formatAddRemMod which xs
+  | not $ null xs = 
+    which ++ show xs
+  | otherwise        = ""
+
+formatCommit commit =
+  authorName ++ (formatAddRemMod "+" (added commit)) ++ " " ++
+  (formatAddRemMod "-" (removed commit)) ++ " " ++
+  (formatAddRemMod "+-" (modified commit)) ++ " " ++ (message commit)
+
+  where authorName = (a_name (author commit)) ++ ": "
+
+onLoad :: MVar [MIrc] -> IO ()
+onLoad serversM = do 
   s <- listenOn (PortNumber 3456)
-  forkIO (listenLoop s)
+  forkIO (listenLoop s serversM)
   putStrLn "Listening on 3456 for github connections."

@@ -5,6 +5,7 @@ import Network.SimpleIRC
 import Data.List (intercalate, foldl', delete)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
+import Control.Concurrent.MVar (MVar)
 
 -- Modules
 import qualified Modules.Hi.Hi as Hi
@@ -23,13 +24,13 @@ data IrcModule = IrcModule
   , mMutedChans :: [B.ByteString]
   }
 
-loadMods :: String -> IO [IrcModule]
-loadMods dir = do
-  Hi.onLoad
-  Eval2.onLoad
-  Hoogle.onLoad
-  GDict.onLoad
-  Github.onLoad
+loadMods :: String -> MVar [MIrc] -> IO [IrcModule]
+loadMods dir serversM = do
+  Hi.onLoad --serversM
+  Eval2.onLoad --serversM
+  Hoogle.onLoad --serversM
+  GDict.onLoad --serversM
+  Github.onLoad serversM
 
   return $
     [ IrcModule Hi.moduleCmds Hi.moduleRaws "Hi" []

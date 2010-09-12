@@ -18,7 +18,7 @@ prefix = "|" -- Move this to the configuration file/Types.hs
 data MessageArgs = MessageArgs
   { modules :: [IrcModule]
   , users   :: Users
-  , argServers :: [MIrc]
+  , argServers :: MVar [MIrc]
   }
   
 isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
@@ -164,7 +164,8 @@ changeStatus argsMVar state s m
 collectServers :: MVar MessageArgs -> EventFunc
 collectServers argsMVar s m
   | mCode m == "001" = do
-    modifyMVar_ argsMVar (\a -> return a {argServers = s:(argServers a)})
+    args <- readMVar argsMVar
+    modifyMVar_ (argServers args) (\a -> return $ s:a)
   | otherwise = return ()
   
 -- Helpers
