@@ -106,7 +106,7 @@ cmdHandler argsMVar mIrc m dest
     ret <- callCmds (Just prefix) m mods mIrc
     mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
     
-    putStrLn $ show $ length $ concat ret
+    putStrLn $ (show $ length $ concat ret) ++ " prefixed commands replied to."
     
   | otherwise = do
     args <- readMVar argsMVar
@@ -114,7 +114,7 @@ cmdHandler argsMVar mIrc m dest
     ret <- callCmds Nothing m mods mIrc
     mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
     
-    putStrLn $ show $ length $ concat ret
+    putStrLn $ (show $ length $ concat ret) ++ " raw commands replied to."
   
     return ()
   where msg  = mMsg m

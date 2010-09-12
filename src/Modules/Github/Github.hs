@@ -10,6 +10,7 @@ import System.IO
 import Network.HTTP.Headers
 import Network.HTTP.Base
 import Data.List
+import Control.Monad
 
 moduleCmds = M.empty
 
@@ -27,36 +28,57 @@ getAllContents h = do
             c1 <- getAllContents h
             return $ c ++ "\n" ++ c1
     else return ""
-    
-listenLoop s = do
-  (h, hn, port) <- accept s
-  hSetBuffering h LineBuffering
 
-  method <- hGetLine h
-  putStrLn $ show $ "POST " `isPrefixOf` method
-  putStrLn $ "Method =: " ++ method
-  if "POST " `isPrefixOf` method
-    then do hPutStrLn h "HTTP/1.0 200 OK"
-            hPutStrLn h "Content-Length: 0"
-            hPutStrLn h "Server: ElysiaBot"
-            hPutStrLn h ""
-    else do hPutStrLn h "HTTP/1.0 405 Method Not Allowed"
-            -- I have absolutely no idea what that '+ 1' is needed for.
-            hPutStrLn h ("Content-Length: " ++ (show $ length errBody + 1))
-            hPutStrLn h "Content-Type: text/html"
-            hPutStrLn h "Server: ElysiaBot"
-            hPutStrLn h ""
-            hPutStrLn h errBody
+getMethod :: Handle -> IO String
+getMethod h = do
+  eof <- hIsEOF h
+  if not eof
+    then hGetLine h
+    else return ""
 
-  contents <- getAllContents h
-  let body = getBody2 $ lines contents
-
-  putStrLn $ urlDecode body
-  listenLoop s
-
+serverReply :: Handle -> String -> IO Bool
+serverReply h method
+  | "POST " `isPrefixOf` method = do
+    hPutStrLn h "HTTP/1.0 200 OK"
+    hPutStrLn h "Content-Length: 0"
+    hPutStrLn h "Server: ElysiaBot"
+    hPutStrLn h ""
+    return True
+  | method == "" = return False
+  | otherwise    = do
+    hPutStrLn h "HTTP/1.0 405 Method Not Allowed"
+    -- I have absolutely no idea what that '+ 1' is needed for.
+    hPutStrLn h ("Content-Length: " ++ (show $ length errBody + 1))
+    hPutStrLn h "Content-Type: text/html"
+    hPutStrLn h "Server: ElysiaBot"
+    hPutStrLn h ""
+    hPutStrLn h errBody
+    return False
   where errBody = 
           "<p>OMG LOOK IT'S A TEAPOT!</p>\n" ++
           "<img src=\"http://jamorama.com/blog/wp-content/uploads/2009/10/teapot6bk1.jpg\"/>\n"
+
+listenLoop s = do
+  (h, hn, port) <- accept s
+  hSetBuffering h LineBuffering
+  putStrLn $ "Got connection from " ++ hn
+
+  method <- getMethod h
+  
+  putStrLn $ show $ "POST " `isPrefixOf` method
+  putStrLn $ "Method =: " ++ method
+  
+  correctReq <- serverReply h method
+  
+  if correctReq 
+    then do contents <- getAllContents h
+            let body = getBody2 $ lines contents
+
+            putStrLn $ urlDecode body
+            hClose h
+    else hClose h
+  
+  listenLoop s
 
 onLoad :: IO ()
 onLoad = do 
