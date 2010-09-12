@@ -46,7 +46,8 @@ serverReply h method
     hPutStrLn h "Server: ElysiaBot"
     hPutStrLn h ""
     
-    return $ Just $ break (== '/') (drop 6 method)
+    let (addr, chan) = break (== '/') (words method !! 1)
+    return $ Just (addr, "#" ++ chan)
 
   | method == "" = return Nothing
   | otherwise    = do
