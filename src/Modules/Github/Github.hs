@@ -43,6 +43,7 @@ listenLoop s = do
     else do hPutStrLn h "HTTP/1.0 405 Method Not Allowed"
             -- I have absolutely no idea what that '+ 1' is needed for.
             hPutStrLn h ("Content-Length: " ++ (show $ length errBody + 1))
+            hPutStrLn h "Content-Type: text/html"
             hPutStrLn h "Server: ElysiaBot"
             hPutStrLn h ""
             hPutStrLn h errBody
