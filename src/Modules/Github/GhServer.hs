@@ -13,6 +13,8 @@ import Data.List
 import Control.Monad
 import Modules.Github.ParsePayload
 
+allowedUsers = ["dom96"]
+
 getBody2 :: [String] -> String
 getBody2 ("\r":body) = unlines body
 getBody2 (_:xs)      = getBody2 xs
@@ -83,9 +85,13 @@ listenLoop s serversM = do
             contents <- getAllContents h
             let body   = urlDecode $ getBody2 $ lines contents
                 parsed = parseAll body
+            
             putStrLn $ "Chan = " ++ chan ++ " Addr = " ++ addr
             either (\e -> putStrLn $ "ParseError! - " ++ e)
-                   (\p -> announce addr chan servers (formatOutput p))
+                   (\p -> do 
+                     let allowed = any (== (a_name (owner $ repository p))) allowedUsers
+                     when allowed $
+                       announce addr chan servers (formatOutput p))
                    parsed
             
             hClose h
