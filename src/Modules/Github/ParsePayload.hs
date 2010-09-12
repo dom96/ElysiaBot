@@ -114,7 +114,7 @@ parseObject payload ("repository", (JSObject (JSONObject val))) =
   payload { repository = foldl' parseRepo defaultRepo val}
 parseObject payload ("ref", (JSString (JSONString val))) = payload {ref = val}
 parseObject payload ("commits", (JSArray val)) = 
-  payload { commits = map parseCommitObjs val}
+  payload { commits = reverse $ map parseCommitObjs val}
 parseObject payload ("before", (JSString (JSONString val))) = 
   payload { before = val}
 parseObject payload ("forced", (JSBool val)) = 
