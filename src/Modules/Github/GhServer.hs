@@ -9,11 +9,21 @@ import Network
 import System.IO
 import Network.HTTP.Headers
 import Network.HTTP.Base
+import Network.HTTP
+import Network.Browser
 import Data.List
 import Control.Monad
 import Modules.Github.ParsePayload
 
 allowedUsers = ["dom96"]
+
+shortenURL addr = do
+  (url, rsp) <- Network.Browser.browse $ do
+               setAllowRedirects True -- handle HTTP redirects
+               request $ getRequest ("http://is.gd/api.php?longurl=" ++ urlEncode addr)
+  if rspCode rsp == (2,0,0)
+    then return $ rspBody rsp
+    else return $ rspBody rsp
 
 getBody2 :: [String] -> String
 getBody2 ("\r":body) = unlines body
@@ -90,8 +100,9 @@ listenLoop s serversM = do
             either (\e -> putStrLn $ "ParseError! - " ++ e)
                    (\p -> do 
                      let allowed = any (== (a_name (owner $ repository p))) allowedUsers
-                     when allowed $
-                       announce addr chan servers (formatOutput p))
+                     when allowed $ do
+                       formatted <- formatOutput p
+                       announce addr chan servers formatted)
                    parsed
             
             hClose h
@@ -99,17 +110,21 @@ listenLoop s serversM = do
   
   listenLoop s serversM
 
--- dom96/SimpleIRC - 3 commits on refs/heads/master.
+-- dom96/SimpleIRC - 3 commit(s) on master, f3g45g.. <http://is.gd/whate> ..y54gsf
 -- dom96: +[whatever.hs, this.hs... 5] -[blah.hs] +-[that.hs] Message
 -- dom96: +-[that.hs] Message
 
-formatOutput :: Payload -> String
-formatOutput payload = 
-  "\x02" ++ (a_name (owner $ repository payload)) ++ "/" ++
-  (name $ repository payload) ++ "\x02 - " ++
-  (show $ length (commits payload)) ++ " commits on " ++
-  (formatRef $ ref payload) ++ ".\n" ++
-  (unlines $ take 3 (map formatCommit (commits payload)))
+formatOutput :: Payload -> IO String
+formatOutput payload = do
+  compareView <- shortenURL (p_compare payload)
+  return $ -- Clean this up lol
+    "\x02" ++ (a_name (owner $ repository payload)) ++ "/" ++
+    (name $ repository payload) ++ "\x02 - " ++
+    (show $ length (commits payload)) ++ " commit(s) on " ++
+    (formatRef $ ref payload) ++ ", " ++ (take 6 (before payload)) ++ ".. <" ++
+    compareView ++ "> .." ++ (take 6 (after payload)) ++ "\n" ++
+    (unlines $ take 3 (map formatCommit (commits payload)))
+
 
 formatRef ref
   | "refs/heads/" `isPrefixOf` ref =
