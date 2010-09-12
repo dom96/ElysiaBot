@@ -88,7 +88,7 @@ listenLoop s serversM = do
             contents <- getAllContents h
             let body   = urlDecode $ getBody2 $ lines contents
                 parsed = parseAll body
-            
+            putStrLn $ "Chan = " ++ chan ++ " Addr = " ++ addr
             either (\e -> putStrLn $ "ParseError! - " ++ e)
                    (\p -> announce addr chan servers (formatOutput p))
                    parsed
