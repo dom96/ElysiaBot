@@ -104,9 +104,11 @@ listenLoop s serversM = do
 
 formatOutput :: Payload -> String
 formatOutput payload = 
-  (a_name (owner $ repository payload)) ++ "/" ++ (name $ repository payload) ++ " - " ++
-  (show $ length (commits payload)) ++ " commits on " ++ (formatRef $ ref payload) ++
-  ".\n" ++ (unlines $ take 3 (map formatCommit (commits payload)))
+  "\x02" ++ (a_name (owner $ repository payload)) ++ "/" ++
+  (name $ repository payload) ++ "\x02 - " ++
+  (show $ length (commits payload)) ++ " commits on " ++
+  (formatRef $ ref payload) ++ ".\n" ++
+  (unlines $ take 3 (map formatCommit (commits payload)))
 
 formatRef ref
   | "refs/heads/" `isPrefixOf` ref =
@@ -115,15 +117,15 @@ formatRef ref
 
 formatAddRemMod which xs
   | not $ null xs = 
-    which ++ show xs
+    which ++ show xs ++ " "
   | otherwise        = ""
 
 formatCommit commit =
-  authorName ++ (formatAddRemMod "+" (added commit)) ++ " " ++
-  (formatAddRemMod "-" (removed commit)) ++ " " ++
-  (formatAddRemMod "+-" (modified commit)) ++ " " ++ (message commit)
+  authorName ++ (formatAddRemMod "\x02+\x02" (added commit)) ++
+  (formatAddRemMod "\x02-\x02" (removed commit)) ++
+  (formatAddRemMod "\x02+-\x02" (modified commit)) ++ (message commit)
 
-  where authorName = (a_name (author commit)) ++ ": "
+  where authorName = "\x02" ++ (a_name (author commit)) ++ ":\x02 "
 
 onLoad :: MVar [MIrc] -> IO ()
 onLoad serversM = do 
