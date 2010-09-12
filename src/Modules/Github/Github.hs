@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Modules.Github.Github (moduleCmds, moduleRaws, onLoad) where
+module Modules.Github.Github (moduleCmds, moduleRaws, onLoad, ) where
 import Network.SimpleIRC
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
@@ -46,8 +46,8 @@ serverReply h method
     hPutStrLn h "Server: ElysiaBot"
     hPutStrLn h ""
     
-    let (addr, chan) = break (== '/') (words method !! 1)
-    return $ Just (addr, "#" ++ chan)
+    let (addr, chan) = break (== '/') (words (drop 6 method) !! 0)
+    return $ Just (addr, "#" ++ (drop 1 chan))
 
   | method == "" = return Nothing
   | otherwise    = do
