@@ -39,18 +39,25 @@ format to encode the IrcMessage and other useful information.
 Message received by Elysia
   
     { 
-      "type": "recv"
+      "type": "recv",
       "IrcMessage": 
       {
-        "nick": "someone"
-        "user": "some"
-        "host": "user.com"
-        "server": null
-        "code": "PRIVMSG"
-        "msg":  "|hello!"
-        "chan": "#()"
-        "other": []
-        "raw": ":someone!~some@user.com PRIVMSG #() :|hello!"
+        "nick":   "someone",
+        "user":   "some",
+        "host":   "user.com",
+        "server": null,
+        "code":   "PRIVMSG",
+        "msg":    "|hello!",
+        "chan":   "#()",
+        "other":  [],
+        "raw":    ":someone!~some@user.com PRIVMSG #() :|hello!",
+      },
+      "IrcServer":
+      {
+        "address":  "irc.freenode.net",
+        "nickname": "ElysiaBot",
+        "username": "Elysia",
+        "chans"   : ["#chan"]
       }
     }
   
@@ -73,5 +80,14 @@ failure
     {
       "type": "failure"
     }
-    
+
+sending a message
+
+    {
+      "type":   "send",
+      "server": "irc.freenode.net",
+      "msg":    "PRIVMSG #chan :Message"
+    }
+      
+      
   
