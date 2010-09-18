@@ -38,12 +38,13 @@ runPlugin :: String -> IO (MVar Plugin)
 runPlugin plDir = do
   currWorkDir <- getCurrentDirectory
   let plWorkDir = currWorkDir </> "Plugins/" </> plDir
-      cmdExec   = "cd " ++ plWorkDir ++ " && ./run.sh"
-  putStrLn $ "Running, " ++ cmdExec ++ " | Working dir = " ++ plWorkDir
-  (inpH, outH, errH, pid) <- runInteractiveCommand cmdExec
+      shFile    = plWorkDir </> "run.sh"
+  putStrLn $ "Working dir = " ++ plWorkDir
+  (inpH, outH, errH, pid) <- runInteractiveProcess ("./run.sh") [] (Just plWorkDir) Nothing
 
   -- TODO: read the plugin.ini file.
   newMVar $ 
     Plugin plDir "" [] outH errH inpH pid []
 
-
+--pluginLoop :: MVar Plugin -> IO ()
+--pluginLoop plugin
