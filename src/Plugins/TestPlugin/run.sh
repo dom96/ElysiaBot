@@ -1,1 +1,1 @@
-runhaskell TestPlugin.hs
+runhaskell -i.. TestPlugin.hs # the -i.. appends .. to the searchpath 

@@ -1,6 +1,6 @@
-
+import PluginUtils
 main = do
-  putStrLn "{ \"type\":\"success\" }"
+  putStrLn $ "{ \"type\":\"" ++ test ++ "\" }"
   loop
 
 loop = do
