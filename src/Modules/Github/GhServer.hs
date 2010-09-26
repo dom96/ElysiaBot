@@ -15,7 +15,7 @@ import Data.List
 import Control.Monad
 import Modules.Github.ParsePayload
 
-allowedUsers = ["dom96"]
+allowedUsers = ["dom96", "XAMPP", "Amrykid", "RockerMONO"]
 
 shortenURL addr = do
   (url, rsp) <- Network.Browser.browse $ do
@@ -54,7 +54,7 @@ serverReply h method
     hPutStrLn h ""
     
     let (addr, chan) = break (== '/') (words (drop 6 method) !! 0)
-    return $ Just (addr, "#" ++ (drop 1 chan))
+    return $ Just (addr, "#" ++ (urlDecode $ drop 1 chan))
 
   | method == "" = return Nothing
   | otherwise    = do
