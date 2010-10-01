@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeSynonymInstances, StandaloneDeriving, DeriveDataTypeable #-}
 module Plugins where
 import System.IO
 import System.Process
@@ -17,14 +17,17 @@ import Types
 
 import Text.JSON
 import Text.JSON.String
+import Text.JSON.Generic
 
 data PluginCommand = PluginCommand
   | PCMessage IrcMessage MIrc
   | PCQuit
   
+{- 
 showJSONMaybe (Just s) = showJSON s
 showJSONMaybe Nothing  = JSNull
-  
+
+
 instance JSON IrcMessage where
   showJSON m = JSObject $ toJSObject $ 
     [("nick", showJSONMaybe (mNick m))
@@ -39,6 +42,10 @@ instance JSON IrcMessage where
     ]
 
   readJSON = undefined -- TODO: ?
+
+-}
+
+deriving instance Data IrcMessage
 
 showJSONMIrc s = do
   addr <- getAddress s
@@ -57,14 +64,13 @@ showJSONCommand (PCMessage msg serv) = do
   servJSON <- showJSONMIrc serv
   return $ JSObject $ toJSObject $
     [("type", showJSON ("recv" :: String))
-    ,("IrcMessage", showJSON msg)
+    ,("IrcMessage", toJSON msg)
     ,("IrcServer", servJSON)
     ]
 
 showJSONCommand (PCQuit) = do
   return $ JSObject $ toJSObject $
-    [("type", showJSON ("quit" :: String))
-    ]
+    [("type", showJSON ("quit" :: String))]
 
 isCorrectDir dir f = do
   r <- doesDirectoryExist (dir </> f)

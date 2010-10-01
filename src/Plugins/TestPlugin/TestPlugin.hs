@@ -1,9 +1,9 @@
 import PluginUtils
 main = do
-  putStrLn $ "{ \"type\":\"" ++ test ++ "\" }"
-  loop
+  sendPID
+  pluginLoop recvMsg
 
-loop = do
-  line <- getLine
-  putStrLn $ "Got line " ++ line
-  loop
+recvMsg :: Message -> IO ()
+recvMsg rcvMsg = do
+  putStrLn $ "TestPlugin: " ++ show rcvMsg
+
