@@ -141,47 +141,10 @@ runPlugin plDir = do
   newMVar $ 
     Plugin plDir "" [] outH errH inpH pid Nothing [] []
 
-{-
-getAllLines :: Handle -> String -> IO String
-getAllLines h s = do
-  putStrLn $ "Before ready, s = " ++ s
-  ready <- hReady h
-  if ready
-    then do line <- catch (do putStrLn "About to hGetLine"
-                              line <- hGetLine h
-                              putStrLn $ "Got line from stderr: " ++ line
-                              putStrLn $ "About to call getAllLines with, " ++ (s ++ " " ++ line)
-                              return line
-                           )
-                           (handleError)
-            getAllLines h (s ++ " " ++ line)
-    else do putStrLn $ "Returning: " ++ s
-            return s
-  
-  where handleError e = 
-          if isEOFError e 
-            then do putStrLn $ "Returning1: " ++ s
-                    return s
-            else ioError e
--}
-
+getAllLines :: Handle -> IO [String]
 getAllLines h = liftA2 (:) first rest `catch` (\_ -> return []) 
   where first = hGetLine h
         rest = getAllLines h
-
-changeStderrContents :: Plugin -> IO (Either IOError Plugin)
-changeStderrContents plugin = try $ do
-  -- hGetContents is lazy, getAllLines is a non-lazy hGetContents :D
-  contents <- getAllLines (pStderr plugin)
-  putStrLn $ "Appending error: " ++ (unlines contents)
-  return plugin {pErrors = (unlines contents):(pErrors plugin)}
-
-checkForErrs :: Plugin -> MVar Plugin -> IO ()
-checkForErrs plugin mPlugin = do
-  pl <- changeStderrContents plugin
-  either (\e -> do putStrLn $ "Couldn't hGetContents, " ++ show e)
-         (\p -> do _ <- swapMVar mPlugin p
-                   return ()) pl
 
 getErrs :: Plugin -> IO String
 getErrs plugin = do
@@ -192,11 +155,7 @@ getErrs plugin = do
 pluginLoop :: MVar MessageArgs -> MVar Plugin -> IO ()
 pluginLoop mArgs mPlugin = do
   plugin <- readMVar mPlugin
-
-  --checkForErrs plugin mPlugin
-
-  --plugin <- readMVar mPlugin -- Re-read the MVar for any changes.
-
+  
   -- This will wait until some output appears, and let us know when
   -- stdout is EOF
   outEof <- hIsEOF (pStdout plugin)
@@ -217,11 +176,9 @@ pluginLoop mArgs mPlugin = do
       
       pluginLoop mArgs mPlugin
     else do
-      -- Check for anything else that might be in stderr
-      --checkForErrs plugin mPlugin
-    
-      --plugin <- readMVar mPlugin -- Re-read the MVar for any changes.
+      -- Get the error message
       errs <- getErrs plugin
+
       -- Plugin crashed
       putStrLn $ "WARNING: Plugin(" ++ pName plugin ++ ") crashed, " ++ 
                  errs
