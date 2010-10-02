@@ -42,6 +42,8 @@ data Plugin = Plugin
   , pStdout      :: Handle
   , pStderr      :: Handle
   , pStdin       :: Handle
-  , pPid         :: ProcessHandle
+  , pPHandle     :: ProcessHandle
+  , pPid         :: Maybe Int
   , pCmds        :: [String]
+  , pErrors      :: [String]
   }
