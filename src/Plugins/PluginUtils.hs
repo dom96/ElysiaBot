@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, DeriveDataTypeable, StandaloneDeriving #-}
-module PluginUtils (Message(..), MServer(..), decodeMessage, pluginLoop, sendPID, sendRawMsg) where
+module PluginUtils (Message(..), MServer(..), decodeMessage, pluginLoop, sendPID, sendCmdAdd, sendRawMsg) where
 import Network.SimpleIRC
 
 import Text.JSON
@@ -7,6 +7,7 @@ import Text.JSON.String
 import Text.JSON.Generic
 
 import Data.List
+import Data.Maybe
 
 import System.Posix.Process (getProcessID)
 import System.IO
@@ -25,6 +26,12 @@ data Message =
     { ircMessage :: IrcMessage
     , ircServer  :: MServer
     } 
+  | MsgCmd 
+    { ircMessage :: IrcMessage
+    , ircServer  :: MServer
+    , prefix     :: B.ByteString
+    , cmd        :: B.ByteString
+    } 
   | MsgQuit
   deriving (Typeable, Data, Show)
 
@@ -35,6 +42,7 @@ instance JSON Message where
     case theType of 
       "quit" -> Ok MsgQuit
       "recv" -> readRecv objects
+      "cmd"  -> readCmd objects
       otherwise -> Error $ "Invalid type, got " ++ theType
     where objects = fromJSObject jsonObjects
           theType = (readType $ objects !! 0) 
@@ -52,6 +60,22 @@ readRecv objects =
   where frstObj = objects !! 1
         sndObj = objects !! 2
 
+readCmd objects =
+  if fst frstObj == "IrcMessage" && fst sndObj == "IrcServer"
+      && fst trdObj == "prefix" && fst frtObj == "cmd" && isJust prefix && isJust cmd
+    then let (Ok iMsg) = fromJSON (snd $ objects !! 1) :: Result IrcMessage
+             (Ok iSrv) = fromJSON (snd $ objects !! 2) :: Result MServer
+         in   Ok $ MsgCmd iMsg iSrv (B.pack $ fromJust prefix) (B.pack $ fromJust cmd)
+    else Error "Invalid objects"
+  where frstObj = objects !! 1
+        sndObj = objects !! 2
+        trdObj = objects !! 3
+        frtObj = objects !! 4
+        prefix = takeS $ snd trdObj
+        cmd    = takeS $ snd frtObj
+
+takeS (JSString s) = Just $ fromJSString s
+takeS _            = Nothing
 
 decodeMessage :: String -> Message
 decodeMessage st = let takeOk (Ok decoded) = decoded
@@ -71,6 +95,9 @@ sendPID = do
   pid <- getProcessID
   putStrLn $ "{ \"type\": \"pid\", \"pid\": \"" ++ (show pid) ++ "\" }"
   --hFlush stdout
+
+sendCmdAdd cmd = do
+  putStrLn $ "{ \"type\": \"cmdadd\", \"cmd\": \"" ++ cmd ++ "\" }"
 
 sendRawMsg :: String -> String -> IO ()
 sendRawMsg server msg = do

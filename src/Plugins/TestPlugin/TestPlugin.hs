@@ -5,12 +5,26 @@ import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 main = do
   sendPID
+  sendCmdAdd "testPlugin"
   pluginLoop recvMsg
 
+{-
 recvMsg :: Message -> IO ()
 recvMsg rcvMsg = do
   --putStrLn $ "TestPlugin: " ++ show rcvMsg
+  
+  
+  
+  {-
   if mCode (ircMessage rcvMsg) == "PRIVMSG" && mMsg (ircMessage rcvMsg) == "|testPlugin"
     then sendRawMsg (B.unpack $ address $ ircServer rcvMsg) $
-            "PRIVMSG " ++ (B.unpack $ fromJust $ mServer $ ircMessage rcvMsg) ++ " :" ++ "PLlugin works!!!"
+            "PRIVMSG " ++ (B.unpack $ fromJust $ mChan $ ircMessage rcvMsg) ++ " :" ++ "PLlugin works!!!"
     else return ()
+  -}
+-}
+
+recvMsg (MsgCmd msg server prefix cmd) = do
+  sendRawMsg (B.unpack $ address server) $
+            "PRIVMSG " ++ (B.unpack $ fromJust $ mChan msg) ++ " :" ++ "Plugin works!!!"
+recvMsg _ = do
+  return ()

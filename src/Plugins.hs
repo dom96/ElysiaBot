@@ -28,6 +28,7 @@ import qualified Data.ByteString.Char8 as B
 -- JSON
 data PluginCommand = PluginCommand
   | PCMessage IrcMessage MIrc
+  | PCCmdMsg  IrcMessage MIrc String String -- IrcMessage, Server, prefix, (msg without prefix)
   | PCQuit
 
 -- Reading JSON
@@ -109,6 +110,16 @@ showJSONCommand (PCMessage msg serv) = do
     ,("IrcServer", servJSON)
     ]
 
+showJSONCommand (PCCmdMsg msg serv prefix cmd) = do
+  servJSON <- showJSONMIrc serv
+  return $ JSObject $ toJSObject $
+    [("type", showJSON ("cmd" :: String))
+    ,("IrcMessage", toJSON msg)
+    ,("IrcServer", servJSON)
+    ,("prefix", showJSON prefix)
+    ,("cmd", showJSON prefix)
+    ]
+
 showJSONCommand (PCQuit) = do
   return $ JSObject $ toJSObject $
     [("type", showJSON ("quit" :: String))]
@@ -170,8 +181,10 @@ pluginLoop mArgs mPlugin = do
 
         case decoded of
           Ok (MsgSend addr msg) -> sendRawToServer mArgs addr msg
-          Ok (MsgPid pid) -> do _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
-                                return ()
+          Ok (MsgPid pid)    -> do _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
+                                   return ()
+          Ok (MsgCmdAdd cmd) -> do _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
+                                   return ()
           Error err       -> putStrLn $ pName plugin ++ ": JSON Error: " ++ err
       
       pluginLoop mArgs mPlugin

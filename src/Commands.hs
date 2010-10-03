@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Commands (onMessage, onPrivateMessage, safeCheckArg, collectServers, MessageArgs(..)) where
 import Network.SimpleIRC
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromJust, isJust, catMaybes)
+import Data.List (find)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent.MVar
@@ -13,8 +14,9 @@ import System.FilePath
 import Modules
 import Users
 import Types
+import Plugins
 
-prefix = "|" -- Move this to the configuration file/Types.hs
+prefix = "|" -- TODO: Move this to the configuration file/Types.hs
   
 isCmd m cmd = (prefix `B.append` cmd) `B.isPrefixOf` m 
 
@@ -114,9 +116,35 @@ cmdHandler argsMVar mIrc m dest
     return ()
   where msg  = mMsg m
 
+dropPrefix :: IrcMessage -> B.ByteString
+dropPrefix m = B.drop (B.length prefix) (mMsg m)
+
+pluginHasCmd :: IrcMessage -> MVar Plugin -> IO (Maybe (MVar Plugin))
+pluginHasCmd msg mPlugin = do
+  plugin <- readMVar mPlugin
+  let cmd      = B.unpack $ dropPrefix msg
+      maybeCmd = find (== cmd) (pCmds plugin)
+  if isJust maybeCmd
+    then return $ Just mPlugin
+    else return Nothing
+
+sendCmdPlugins :: MVar MessageArgs -> MIrc -> IrcMessage -> IO ()
+sendCmdPlugins mArgs s msg = do
+  -- Check if any plugin has this command binded
+  args <- readMVar mArgs
+  if B.isPrefixOf prefix (mMsg msg)
+    then do p <- mapM (pluginHasCmd msg) (plugins args)
+            let plugins = catMaybes p
+            putStrLn $ "Replied to " ++ show (length plugins) ++ " cmd from plugins."
+            mapM_ (writeCommand (PCCmdMsg msg s (B.unpack prefix) (B.unpack $ dropPrefix msg))) plugins
+    else return ()
+
 onMessage :: MVar MessageArgs -> EventFunc
 onMessage argsMVar s m = do
   dest <- getDest s m
+  
+  sendCmdPlugins argsMVar s m
+    
   
   cmdHandler argsMVar s m dest
 
