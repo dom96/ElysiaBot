@@ -1,5 +1,5 @@
-{-# LANGUAGE TypeSynonymInstances, StandaloneDeriving, DeriveDataTypeable, OverloadedStrings #-}
-module Plugins where
+{-# LANGUAGE DeriveDataTypeable, OverloadedStrings, StandaloneDeriving #-}
+module Plugins (PluginCommand(..), writeCommand, runPlugins, pluginLoop, messagePlugin) where
 import System.IO
 import System.IO.Error (try, catch, isEOFError)
 import System.Process
@@ -12,27 +12,32 @@ import Control.Monad
 import Control.Applicative
 import Control.Exception (IOException)
 
-import Data.List (isPrefixOf)
-import Data.Maybe
-
 import Network.SimpleIRC
 
-import Types
-
 import Text.JSON
-import Text.JSON.String
 import Text.JSON.Generic
+import Text.JSON.Types
+
+import Data.Maybe
+import Data.List (isPrefixOf)
 
 import qualified Data.ByteString.Char8 as B
 
--- JSON
-data PluginCommand = PluginCommand
-  | PCMessage IrcMessage MIrc
-  | PCCmdMsg  IrcMessage MIrc String String -- IrcMessage, Server, prefix, (msg without prefix)
-  | PCQuit
+import Types
 
--- Reading JSON
--- Messages that can be received from the plugins
+data RPC = 
+    RPCRequest
+      { reqMethod :: B.ByteString
+      , reqParams :: JSValue
+      , reqId     :: Maybe Rational
+      } 
+  | RPCResponse 
+      { rspResult :: B.ByteString
+      , rspError  :: Maybe B.ByteString
+      , rspID     :: Rational
+      }
+  deriving (Typeable, Show)
+  
 data Message = 
    MsgSend
     { servAddr :: String
@@ -43,52 +48,85 @@ data Message =
   | MsgPid
     { pid      :: Int }
   deriving Show
+  
+data PluginCommand = PluginCommand
+  | PCMessage IrcMessage MIrc
+  | PCCmdMsg  IrcMessage MIrc String String -- IrcMessage, Server, prefix, (msg without prefix)
+  | PCQuit
 
-instance JSON Message where
-  readJSON (JSObject jsonObjects) = 
-    case theType of 
-      (Ok "send") -> readSend objects
-      (Ok "cmdadd") -> readCmdadd objects
-      (Ok "pid") -> readPid objects
-      (Error err) -> Error $ err
-      otherwise -> Error $ "Invalid type."
-    where objects = fromJSObject jsonObjects
-          theType = readType $ objects !! 0
-          
-  showJSON = undefined
+validateFields :: JSValue -> [String] -> Bool
+validateFields (JSObject obj) fields =
+  let exist = map (get_field obj) fields
+  in all (isJust) exist
 
-readType ("type", (JSString theType)) = Ok $ fromJSString theType
-readType (name, _) = Error $ "Couldn't find 'type' or type is not a string, got " ++ name
+-- -.-
+getJSString :: JSValue -> String
+getJSString (JSString (JSONString s)) = s
 
-readSend objects =
-  if fst fstObj == "server" && fst sndObj == "msg" && isJust serv && isJust msg 
-    then Ok $ MsgSend (fromJust serv) (fromJust msg)
-    else Error "Invalid objects"
-  where fstObj = objects !! 1
-        sndObj = objects !! 2
-        serv   = takeS $ snd fstObj 
-        msg    = takeS $ snd sndObj
+getJSMaybe :: JSValue -> Maybe JSValue
+getJSMaybe (JSObject obj) = 
+  get_field obj "Just"
+getJSMaybe (JSString (JSONString s)) = 
+  if s == "Nothing"
+    then Nothing
+    else error $ "Maybe in a JSON literal is a string, but it is not, \"Nothing\", got " ++ s
 
-readCmdadd objects =
-  if fst fstObj == "cmd" && isJust cmd
-    then Ok $ MsgCmdAdd (fromJust cmd)
-    else Error "Invalid objects"
-  where fstObj = objects !! 1
-        cmd    = takeS $ snd fstObj 
+getJSRatio :: JSValue -> Rational
+getJSRatio (JSRational _ r) = r
+getJSRatio _ = error "Not a JSRational."
 
-readPid objects =
-  if fst fstObj == "pid" && isJust pid
-    then Ok $ MsgPid (read $ fromJust pid)
-    else Error "Invalid objects"
-  where fstObj = objects !! 1
-        pid    = takeS $ snd fstObj 
+errorResult :: Result a -> a
+errorResult (Ok a) = a
+errorResult (Error s) = error s
 
-takeS (JSString s) = Just $ fromJSString s
-takeS _            = Nothing
+-- Turns the parsed JSValue into a RPC(Either a RPCRequest or RPCResponse)
+jsToRPC :: JSValue -> RPC
+jsToRPC js@(JSObject obj) 
+  | validateFields js ["method", "params", "id"] =
+    let rID = getJSMaybe $ fromJust $ get_field obj "id" 
+    in RPCRequest 
+         { reqMethod = B.pack $ getJSString $ fromJust $ get_field obj "method"
+         , reqParams = fromJust $ get_field obj "params" 
+         , reqId     = if isJust $ rID 
+                          then Just $ getJSRatio $ fromJust rID
+                          else Nothing 
+         }
 
--- Commands -> JSON String
+  -- TODO: RPCResponse.
+
+-- This function just checks the reqMethod of RPCRequest.
+rpcToMsg :: RPC -> Message
+rpcToMsg req@(RPCRequest method _ _)
+  | method == "send"    = rpcToSend   req
+  | method == "cmdadd"  = rpcToCmdAdd req
+  | method == "pid"     = rpcToPID    req 
+
+-- Turns an RPC(Which must be a RPCRequest with a method of "send") into a MsgSend.
+rpcToSend :: RPC -> Message
+rpcToSend (RPCRequest _ (JSArray params) _) = 
+  MsgSend server msg
+  where server    = getJSString $ params !! 0
+        msg       = getJSString $ params !! 1
+
+rpcToCmdAdd :: RPC -> Message
+rpcToCmdAdd (RPCRequest _ (JSArray params) _) = 
+  MsgCmdAdd cmd
+  where cmd = getJSString $ params !! 0
+
+rpcToPID :: RPC -> Message
+rpcToPID (RPCRequest _ (JSArray params) _) =
+  MsgPid (read pid) -- TODO: Check whether it's an int.
+  where pid = getJSString $ params !! 0
+
+decodeMessage :: String -> Message
+decodeMessage xs = rpcToMsg $ jsToRPC parsed
+  where parsed = errorResult $ decode xs 
+  
+-- Writing JSON ----------------------------------------------------------------
+
 deriving instance Data IrcMessage
 
+showJSONMIrc :: MIrc -> IO JSValue
 showJSONMIrc s = do
   addr <- getAddress s
   nick <- getNickname s
@@ -102,29 +140,31 @@ showJSONMIrc s = do
     ,("chans", showJSON $ chans)
     ]
 
+showJSONCommand :: PluginCommand -> IO JSValue
 showJSONCommand (PCMessage msg serv) = do
   servJSON <- showJSONMIrc serv
   return $ JSObject $ toJSObject $
-    [("type", showJSON ("recv" :: String))
-    ,("IrcMessage", toJSON msg)
-    ,("IrcServer", servJSON)
+    [("method", showJSON ("recv" :: String))
+    ,("params", JSArray [toJSON msg, servJSON])
+    ,("id", showJSON ("Nothing" :: String))
     ]
 
 showJSONCommand (PCCmdMsg msg serv prefix cmd) = do
   servJSON <- showJSONMIrc serv
   return $ JSObject $ toJSObject $
-    [("type", showJSON ("cmd" :: String))
-    ,("IrcMessage", toJSON msg)
-    ,("IrcServer", servJSON)
-    ,("prefix", showJSON prefix)
-    ,("cmd", showJSON prefix)
+    [("method", showJSON ("cmd" :: String))
+    ,("params", JSArray [toJSON msg, servJSON, showJSON prefix, showJSON cmd])
+    ,("id", showJSON ("Nothing" :: String))
     ]
 
 showJSONCommand (PCQuit) = do
   return $ JSObject $ toJSObject $
-    [("type", showJSON ("quit" :: String))]
+    [("method", showJSON ("quit" :: String))
+    ,("params", JSArray [])
+    ,("id", showJSON ("Nothing" :: String))
+    ]
 
--- END OF JSON -------------------------------------------
+-- End of JSON -----------------------------------------------------------------
 
 isCorrectDir dir f = do
   r <- doesDirectoryExist (dir </> f)
@@ -177,15 +217,14 @@ pluginLoop mArgs mPlugin = do
       putStrLn $ "Got line from plugin(" ++ pName plugin ++ "): " ++ line
       
       when ("{" `isPrefixOf` line) $ do 
-        let decoded = decode line :: Result Message
+        let decoded = decodeMessage line
 
         case decoded of
-          Ok (MsgSend addr msg) -> sendRawToServer mArgs addr msg
-          Ok (MsgPid pid)    -> do _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
-                                   return ()
-          Ok (MsgCmdAdd cmd) -> do _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
-                                   return ()
-          Error err       -> putStrLn $ pName plugin ++ ": JSON Error: " ++ err
+          MsgSend addr msg -> sendRawToServer mArgs addr msg
+          MsgPid pid       -> do _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
+                                 return ()
+          MsgCmdAdd cmd    -> do _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
+                                 return ()
       
       pluginLoop mArgs mPlugin
     else do
@@ -222,4 +261,7 @@ messagePlugin :: MVar MessageArgs -> EventFunc
 messagePlugin mArgs s m = do
   args <- readMVar mArgs
   mapM_ (writeCommand (PCMessage m s)) (plugins args)
+
+
+
 

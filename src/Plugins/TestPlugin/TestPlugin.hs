@@ -24,7 +24,6 @@ recvMsg rcvMsg = do
 -}
 
 recvMsg (MsgCmd msg server prefix cmd) = do
-  sendRawMsg (B.unpack $ address server) $
-            "PRIVMSG " ++ (B.unpack $ fromJust $ mChan msg) ++ " :" ++ "Plugin works!!!"
+  sendPrivmsg (B.unpack $ address server) (B.unpack $ fromJust $ mChan msg) "Plugin works!!!"
 recvMsg _ = do
   return ()
