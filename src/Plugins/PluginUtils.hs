@@ -10,6 +10,9 @@ import Text.JSON.Generic
 import Text.JSON.Types
 
 import Data.Maybe
+import Data.Ratio (numerator)
+
+import Control.Monad(liftM)
 
 import qualified Data.ByteString.Char8 as B
 
@@ -24,7 +27,7 @@ data RPC =
   | RPCResponse 
       { rspResult :: B.ByteString
       , rspError  :: Maybe B.ByteString
-      , rspID     :: Rational
+      , rspId     :: Rational
       }
   deriving (Typeable, Show)
 
@@ -47,6 +50,14 @@ data Message =
     , cmd        :: B.ByteString
     } 
   | MsgQuit
+  | MsgSuccess
+    { msg :: B.ByteString
+    , sId :: Int
+    }
+  | MsgError
+    { err :: B.ByteString
+    , eId :: Int
+    }
   deriving (Typeable, Data, Show)
 
 validateFields :: JSValue -> [String] -> Bool
@@ -59,12 +70,10 @@ getJSString :: JSValue -> String
 getJSString (JSString (JSONString s)) = s
 
 getJSMaybe :: JSValue -> Maybe JSValue
-getJSMaybe (JSObject obj) = 
-  get_field obj "Just"
-getJSMaybe (JSString (JSONString s)) = 
-  if s == "Nothing"
-    then Nothing
-    else error $ "Maybe in a JSON literal is a string, but it is not, \"Nothing\", got " ++ s
+getJSMaybe (JSNull) = 
+  Nothing
+getJSMaybe jsvalue = 
+  Just jsvalue
 
 getJSRatio :: JSValue -> Rational
 getJSRatio (JSRational _ r) = r
@@ -82,18 +91,28 @@ jsToRPC js@(JSObject obj)
     in RPCRequest 
          { reqMethod = B.pack $ getJSString $ fromJust $ get_field obj "method"
          , reqParams = fromJust $ get_field obj "params" 
-         , reqId     = if isJust $ rID 
+         , reqId     = if isJust rID 
                           then Just $ getJSRatio $ fromJust rID
                           else Nothing 
          }
 
-  -- TODO: RPCResponse.
+  | validateFields js ["result", "error", "id"] =
+    let rErr = getJSMaybe $ fromJust $ get_field obj "error" 
+    in RPCResponse
+         { rspResult = B.pack $ getJSString $ fromJust $ get_field obj "result"
+         , rspError  = if isJust rErr
+                         then Just $ B.pack $ getJSString $ fromJust rErr
+                         else Nothing
+         , rspId     = getJSRatio $ fromJust $ get_field obj "id"
+         }
 
 -- This function just checks the reqMethod of RPCRequest.
 rpcToMsg :: RPC -> Message
 rpcToMsg req@(RPCRequest method _ _)
   | method == "recv" = rpcToRecv req
   | method == "cmd"  = rpcToCmd  req
+rpcToMsg rsp@(RPCResponse _ (Just _) _) = rpcToError   rsp
+rpcToMsg rsp@(RPCResponse _ Nothing _)  = rpcToSuccess rsp
 
 -- Turns an RPC(Which must be a RPCRequest with a method of "recv") into a MsgRecv.
 rpcToRecv :: RPC -> Message
@@ -112,7 +131,15 @@ rpcToCmd (RPCRequest _ (JSArray params) _) =
         server  = params !! 1
         prfx    = B.pack $ getJSString $ params !! 2
         command = B.pack $ getJSString $ params !! 3
-        
+
+rpcToSuccess :: RPC -> Message
+rpcToSuccess (RPCResponse result _ id) =
+  MsgSuccess result (fromIntegral $ numerator id)
+
+rpcToError :: RPC -> Message
+rpcToError (RPCResponse _ (Just err) id) =
+  MsgError err (fromIntegral $ numerator id)
+
 decodeMessage :: String -> Message
 decodeMessage xs = rpcToMsg $ jsToRPC parsed
   where parsed = errorResult $ decode xs 
@@ -121,6 +148,7 @@ decodeMessage xs = rpcToMsg $ jsToRPC parsed
 
 pluginLoop :: (Message -> IO ()) -> IO ()
 pluginLoop func = do
+  -- TODO: Think of a clever way to store errors. Perhaps as a IORef [Error { id, method, error }
   line <- getLine
   let msg = decodeMessage line
   func msg
@@ -130,11 +158,11 @@ sendPID :: IO ()
 sendPID = do
   hSetBuffering stdout LineBuffering -- Without this, stdout isn't flushed every putStrLn
   pid <- getProcessID
-  putStrLn $ "{ \"method\": \"pid\", \"params\": [ \"" ++ (show pid) ++ "\" ], \"id\": \"Nothing\" }"
+  putStrLn $ "{ \"method\": \"pid\", \"params\": [ \"" ++ (show pid) ++ "\" ], \"id\": null }"
   --hFlush stdout
 
 sendCmdAdd cmd = do
-  putStrLn $ "{ \"method\": \"cmdadd\", \"params\": [ \"" ++ cmd ++ "\" ], \"id\": 0 }" -- TODO: Change ID ?
+  putStrLn $ "{ \"method\": \"cmdadd\", \"params\": [ \"" ++ cmd ++ "\" ], \"id\": 0 }"
 
 sendRawMsg :: String -> String -> IO ()
 sendRawMsg server msg = do

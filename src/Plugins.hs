@@ -20,6 +20,7 @@ import Text.JSON.Types
 
 import Data.Maybe
 import Data.List (isPrefixOf)
+import Data.Ratio (numerator)
 
 import qualified Data.ByteString.Char8 as B
 
@@ -42,17 +43,22 @@ data Message =
    MsgSend
     { servAddr :: String
     , rawMsg   :: String
+    , sId      :: Int
     }
   | MsgCmdAdd
-    { command  :: String }
+    { command  :: String, caId :: Int }
   | MsgPid
     { pid      :: Int }
   deriving Show
   
 data PluginCommand = PluginCommand
+  -- Requests
   | PCMessage IrcMessage MIrc
   | PCCmdMsg  IrcMessage MIrc String String -- IrcMessage, Server, prefix, (msg without prefix)
   | PCQuit
+  -- Responses
+  | PCSuccess String Int -- result message, id
+  | PCError   String Int -- error message, id
 
 validateFields :: JSValue -> [String] -> Bool
 validateFields (JSObject obj) fields =
@@ -64,12 +70,10 @@ getJSString :: JSValue -> String
 getJSString (JSString (JSONString s)) = s
 
 getJSMaybe :: JSValue -> Maybe JSValue
-getJSMaybe (JSObject obj) = 
-  get_field obj "Just"
-getJSMaybe (JSString (JSONString s)) = 
-  if s == "Nothing"
-    then Nothing
-    else error $ "Maybe in a JSON literal is a string, but it is not, \"Nothing\", got " ++ s
+getJSMaybe (JSNull) = 
+  Nothing
+getJSMaybe jsvalue = 
+  Just jsvalue
 
 getJSRatio :: JSValue -> Rational
 getJSRatio (JSRational _ r) = r
@@ -103,15 +107,21 @@ rpcToMsg req@(RPCRequest method _ _)
 
 -- Turns an RPC(Which must be a RPCRequest with a method of "send") into a MsgSend.
 rpcToSend :: RPC -> Message
-rpcToSend (RPCRequest _ (JSArray params) _) = 
-  MsgSend server msg
+rpcToSend (RPCRequest _ (JSArray params) (Just id)) = 
+  MsgSend server msg (fromIntegral $ numerator id)
   where server    = getJSString $ params !! 0
         msg       = getJSString $ params !! 1
 
+rpcToSend (RPCRequest _ (JSArray params) Nothing) = 
+  error "id is Nothing, expected something."
+
 rpcToCmdAdd :: RPC -> Message
-rpcToCmdAdd (RPCRequest _ (JSArray params) _) = 
-  MsgCmdAdd cmd
+rpcToCmdAdd (RPCRequest _ (JSArray params) (Just id)) = 
+  MsgCmdAdd cmd (fromIntegral $ numerator id)
   where cmd = getJSString $ params !! 0
+
+rpcToCmdAdd (RPCRequest _ (JSArray params) Nothing) = 
+  error "id is Nothing, expected something."
 
 rpcToPID :: RPC -> Message
 rpcToPID (RPCRequest _ (JSArray params) _) =
@@ -146,7 +156,7 @@ showJSONCommand (PCMessage msg serv) = do
   return $ JSObject $ toJSObject $
     [("method", showJSON ("recv" :: String))
     ,("params", JSArray [toJSON msg, servJSON])
-    ,("id", showJSON ("Nothing" :: String))
+    ,("id", JSNull)
     ]
 
 showJSONCommand (PCCmdMsg msg serv prefix cmd) = do
@@ -154,14 +164,28 @@ showJSONCommand (PCCmdMsg msg serv prefix cmd) = do
   return $ JSObject $ toJSObject $
     [("method", showJSON ("cmd" :: String))
     ,("params", JSArray [toJSON msg, servJSON, showJSON prefix, showJSON cmd])
-    ,("id", showJSON ("Nothing" :: String))
+    ,("id", JSNull)
     ]
 
 showJSONCommand (PCQuit) = do
   return $ JSObject $ toJSObject $
     [("method", showJSON ("quit" :: String))
     ,("params", JSArray [])
-    ,("id", showJSON ("Nothing" :: String))
+    ,("id", JSNull)
+    ]
+
+showJSONCommand (PCSuccess msg id) = do
+  return $ JSObject $ toJSObject $
+    [("result", showJSON msg)
+    ,("error", JSNull)
+    ,("id", showJSON id)
+    ]
+
+showJSONCommand (PCError err id) = do
+  return $ JSObject $ toJSObject $
+    [("result", showJSON ("error" :: String))
+    ,("error", showJSON err)
+    ,("id", showJSON id)
     ]
 
 -- End of JSON -----------------------------------------------------------------
@@ -220,11 +244,21 @@ pluginLoop mArgs mPlugin = do
         let decoded = decodeMessage line
 
         case decoded of
-          MsgSend addr msg -> sendRawToServer mArgs addr msg
-          MsgPid pid       -> do _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
-                                 return ()
-          MsgCmdAdd cmd    -> do _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
-                                 return ()
+          MsgSend addr msg id -> do ret <- sendRawToServer mArgs addr msg
+                                    if ret
+                                      then writeCommand 
+                                             (PCSuccess "Message sent." id) 
+                                             mPlugin
+                                      else writeCommand 
+                                             (PCError "Server doesn't exist." id)
+                                             mPlugin
+          MsgPid pid          -> do _ <- swapMVar mPlugin 
+                                                  (plugin {pPid = Just pid}) 
+                                    return ()
+          MsgCmdAdd cmd id    -> do _ <- swapMVar mPlugin 
+                                                  (plugin {pCmds = cmd:pCmds plugin}) 
+                                    writeCommand (PCSuccess "Command added." id) 
+                                                 mPlugin
       
       pluginLoop mArgs mPlugin
     else do
@@ -238,7 +272,7 @@ pluginLoop mArgs mPlugin = do
       let filt = filter (mPlugin /=) (plugins args)
       putMVar mArgs (args {plugins = filt})
 
-sendRawToServer :: MVar MessageArgs -> String -> String -> IO ()
+sendRawToServer :: MVar MessageArgs -> String -> String -> IO Bool
 sendRawToServer mArgs server msg = do
   args <- readMVar mArgs 
   servers <- readMVar $ argServers args
@@ -246,9 +280,9 @@ sendRawToServer mArgs server msg = do
                                   return $ addr == (B.pack server)) 
                          servers
   if not $ null filtered
-    then sendRaw (filtered !! 0) (B.pack msg)
-    else -- TODO: Make it report the error to the plugin
-         return ()
+    then do sendRaw (filtered !! 0) (B.pack msg)
+            return True
+    else return False
 
 writeCommand :: PluginCommand -> MVar Plugin -> IO ()
 writeCommand cmd mPlugin = do
