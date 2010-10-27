@@ -2,7 +2,7 @@
 module Commands (onMessage, onPrivateMessage, safeCheckArg, collectServers, MessageArgs(..)) where
 import Network.SimpleIRC
 import Data.Maybe (fromJust, isJust, catMaybes)
-import Data.List (find)
+import Data.List (find, isPrefixOf)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent.MVar
@@ -123,7 +123,7 @@ pluginHasCmd :: IrcMessage -> MVar Plugin -> IO (Maybe (MVar Plugin))
 pluginHasCmd msg mPlugin = do
   plugin <- readMVar mPlugin
   let cmd      = B.unpack $ dropPrefix msg
-      maybeCmd = find (== cmd) (pCmds plugin)
+      maybeCmd = find ((flip isPrefixOf) cmd) (pCmds plugin)
   if isJust maybeCmd
     then return $ Just mPlugin
     else return Nothing
