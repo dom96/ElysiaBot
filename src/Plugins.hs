@@ -21,6 +21,7 @@ import Text.JSON.Types
 import Data.Maybe
 import Data.List (isPrefixOf)
 import Data.Ratio (numerator)
+import Data.Char (toLower)
 
 import qualified Data.ByteString.Char8 as B
 
@@ -41,12 +42,12 @@ data RPC =
   
 data Message = 
    MsgSend
-    { servAddr :: String
-    , rawMsg   :: String
+    { servAddr :: B.ByteString
+    , rawMsg   :: B.ByteString
     , sId      :: Int
     }
   | MsgCmdAdd
-    { command  :: String, caId :: Int }
+    { command  :: B.ByteString, caId :: Int }
   | MsgPid
     { pid      :: Int }
   deriving Show
@@ -57,20 +58,20 @@ data PluginCommand = PluginCommand
   | PCCmdMsg  IrcMessage MIrc String String -- IrcMessage, Server, prefix, (msg without prefix)
   | PCQuit
   -- Responses
-  | PCSuccess String Int -- result message, id
-  | PCError   String Int -- error message, id
+  | PCSuccess B.ByteString Int -- result message, id
+  | PCError   B.ByteString Int -- error message, id
 
 validateFields :: JSValue -> [String] -> Bool
 validateFields (JSObject obj) fields =
   let exist = map (get_field obj) fields
   in all (isJust) exist
 
-validateArray :: JSValue -> Int -> Bool
-validateArray (JSArray arr) num = len arr == num 
+validateArray :: [JSValue] -> Int -> Bool
+validateArray arr num = length arr == num 
 
 -- -.-
-getJSString :: JSValue -> String
-getJSString (JSString (JSONString s)) = s
+getJSString :: JSValue -> B.ByteString
+getJSString (JSString (JSONString s)) = B.pack s
 
 getJSMaybe :: JSValue -> Maybe JSValue
 getJSMaybe (JSNull) = 
@@ -92,52 +93,114 @@ jsToRPC js@(JSObject obj)
   | validateFields js ["method", "params", "id"] =
     let rID = getJSMaybe $ fromJust $ get_field obj "id" 
     in RPCRequest 
-         { reqMethod = B.pack $ getJSString $ fromJust $ get_field obj "method"
+         { reqMethod = getJSString $ fromJust $ get_field obj "method"
          , reqParams = fromJust $ get_field obj "params" 
          , reqId     = if isJust $ rID 
                           then Just $ getJSRatio $ fromJust rID
                           else Nothing 
          }
 
-  -- TODO: RPCResponse.
+  -- TODO: RPCResponse -- Currently there are no Responses from the plugin.
 
 -- This function just checks the reqMethod of RPCRequest.
-rpcToMsg :: RPC -> Message
+rpcToMsg :: RPC -> Either (Int, B.ByteString) Message
 rpcToMsg req@(RPCRequest method _ _)
   | method == "send"    = rpcToSend   req
   | method == "cmdadd"  = rpcToCmdAdd req
   | method == "pid"     = rpcToPID    req 
 
 -- Turns an RPC(Which must be a RPCRequest with a method of "send") into a MsgSend.
-rpcToSend :: RPC -> Message
-rpcToSend (RPCRequest _ (JSArray params) (Just id)) = 
-  MsgSend server msg (fromIntegral $ numerator id)
-  where server    = getJSString $ params !! 0
+rpcToSend :: RPC -> Either (Int, B.ByteString) Message
+rpcToSend (RPCRequest _ (JSArray params) (Just id))
+  | validateArray params 2 = 
+    let server    = getJSString $ params !! 0
         msg       = getJSString $ params !! 1
-
+    in Right $ MsgSend server msg numId
+  -- PRIVMSG, NOTICE, JOIN, PART, KICK, TOPIC
+  | validateArray params 3 =
+    -- JOIN, TOPIC, NICK, QUIT
+    let server = getJSString $ params !! 0
+        cmd    = B.map toLower (getJSString $ params !! 1)
+        chan   = getJSString $ params !! 2
+    in case cmd of 
+         "join"    -> Right $ 
+           MsgSend server (showCommand (MJoin chan Nothing)) numId
+         "topic"   -> Right $ 
+           MsgSend server (showCommand (MTopic chan Nothing)) numId
+         "nick"    -> Right $ 
+           MsgSend server (showCommand (MNick chan)) numId
+         otherwise -> Left (numId, "Invalid command, got: " `B.append` cmd)
+  | validateArray params 4 =
+    -- PRIVMSG, PART, TOPIC, INVITE, NOTICE, ACTION
+    let server = getJSString $ params !! 0
+        cmd    = B.map toLower (getJSString $ params !! 1)
+        chan   = getJSString $ params !! 2
+        msg    = getJSString $ params !! 3
+    in case cmd of 
+         "privmsg" -> Right $
+            MsgSend server (showCommand (MPrivmsg chan msg)) numId
+         "part"    -> Right $
+            MsgSend server (showCommand (MPart chan msg)) numId
+         "topic"   -> Right $ 
+            MsgSend server (showCommand (MTopic chan (Just msg))) numId
+         "notice"  -> Right $
+            MsgSend server (showCommand (MNotice chan msg)) numId
+         "action"  -> Right $
+            MsgSend server (showCommand (MAction chan msg)) numId
+         otherwise -> Left (numId, "Invalid command, got: " `B.append` cmd)
+  | validateArray params 5 =
+    -- KICK
+    let server = getJSString $ params !! 0
+        cmd    = B.map toLower (getJSString $ params !! 1)
+        chan   = getJSString $ params !! 2
+        usr    = getJSString $ params !! 3
+        msg    = getJSString $ params !! 4
+    in case cmd of
+         "kick"    -> Right $
+            MsgSend server (showCommand (MKick chan usr msg)) numId
+         otherwise -> Left (numId, "Invalid command, got: " `B.append` cmd)
+    
+  where numId = fromIntegral $ numerator id
+  
 rpcToSend (RPCRequest _ (JSArray params) Nothing) = 
   error "id is Nothing, expected something."
 
-rpcToCmdAdd :: RPC -> Message
+rpcToCmdAdd :: RPC -> Either (Int, B.ByteString) Message
 rpcToCmdAdd (RPCRequest _ (JSArray params) (Just id)) = 
-  MsgCmdAdd cmd (fromIntegral $ numerator id)
+  Right $ MsgCmdAdd cmd (fromIntegral $ numerator id)
   where cmd = getJSString $ params !! 0
 
 rpcToCmdAdd (RPCRequest _ (JSArray params) Nothing) = 
   error "id is Nothing, expected something."
 
-rpcToPID :: RPC -> Message
+rpcToPID :: RPC -> Either (Int, B.ByteString) Message
 rpcToPID (RPCRequest _ (JSArray params) _) =
-  MsgPid (read pid) -- TODO: Check whether it's an int.
-  where pid = getJSString $ params !! 0
+  Right $ MsgPid (read pid) -- TODO: Check whether it's an int.
+  where pid = B.unpack $ getJSString $ params !! 0
 
-decodeMessage :: String -> Message
+decodeMessage :: String -> Either (Int, B.ByteString) Message
 decodeMessage xs = rpcToMsg $ jsToRPC parsed
   where parsed = errorResult $ decode xs 
   
 -- Writing JSON ----------------------------------------------------------------
 
-deriving instance Data IrcMessage
+showJSONMaybe :: (JSON t) => Maybe t -> JSValue
+showJSONMaybe (Just a)  = showJSON a
+showJSONMaybe (Nothing) = JSNull
+
+showJSONIrcMessage :: IrcMessage -> JSValue
+showJSONIrcMessage msg =
+  JSObject $ toJSObject $
+    [("nick", showJSONMaybe (mNick msg))
+    ,("user", showJSONMaybe (mUser msg))
+    ,("host", showJSONMaybe (mHost msg))
+    ,("server", showJSONMaybe (mServer msg))
+    ,("code", showJSON (mCode msg))
+    ,("msg", showJSON (mMsg msg))
+    ,("chan", showJSONMaybe (mChan msg))
+    ,("other", showJSONMaybe (mOther msg))
+    ,("raw", showJSON (mRaw msg))
+    ]
 
 showJSONMIrc :: MIrc -> IO JSValue
 showJSONMIrc s = do
@@ -158,7 +221,7 @@ showJSONCommand (PCMessage msg serv) = do
   servJSON <- showJSONMIrc serv
   return $ JSObject $ toJSObject $
     [("method", showJSON ("recv" :: String))
-    ,("params", JSArray [toJSON msg, servJSON])
+    ,("params", JSArray [showJSONIrcMessage msg, servJSON])
     ,("id", JSNull)
     ]
 
@@ -166,7 +229,8 @@ showJSONCommand (PCCmdMsg msg serv prefix cmd) = do
   servJSON <- showJSONMIrc serv
   return $ JSObject $ toJSObject $
     [("method", showJSON ("cmd" :: String))
-    ,("params", JSArray [toJSON msg, servJSON, showJSON prefix, showJSON cmd])
+    ,("params", JSArray [showJSONIrcMessage msg, 
+                         servJSON, showJSON prefix, showJSON cmd])
     ,("id", JSNull)
     ]
 
@@ -247,21 +311,20 @@ pluginLoop mArgs mPlugin = do
         let decoded = decodeMessage line
 
         case decoded of
-          MsgSend addr msg id -> do ret <- sendRawToServer mArgs addr msg
-                                    if ret
-                                      then writeCommand 
-                                             (PCSuccess "Message sent." id) 
-                                             mPlugin
-                                      else writeCommand 
-                                             (PCError "Server doesn't exist." id)
-                                             mPlugin
-          MsgPid pid          -> do _ <- swapMVar mPlugin 
-                                                  (plugin {pPid = Just pid}) 
-                                    return ()
-          MsgCmdAdd cmd id    -> do _ <- swapMVar mPlugin 
-                                                  (plugin {pCmds = cmd:pCmds plugin}) 
-                                    writeCommand (PCSuccess "Command added." id) 
-                                                 mPlugin
+          Right (MsgSend addr msg id) -> do 
+            ret <- sendRawToServer mArgs addr msg
+            if ret
+              then writeCommand (PCSuccess "Message sent." id) mPlugin
+              else writeCommand (PCError "Server doesn't exist." id) mPlugin
+          Right (MsgPid pid)          -> do
+            _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
+            return ()
+          Right (MsgCmdAdd cmd id)    -> do 
+            _ <- swapMVar mPlugin (plugin {pCmds = (B.unpack cmd):pCmds plugin}) 
+            writeCommand (PCSuccess "Command added." id) mPlugin
+          Left  (id, err)             -> do
+            writeCommand (PCError err id) mPlugin
+            
       
       pluginLoop mArgs mPlugin
     else do
@@ -275,15 +338,15 @@ pluginLoop mArgs mPlugin = do
       let filt = filter (mPlugin /=) (plugins args)
       putMVar mArgs (args {plugins = filt})
 
-sendRawToServer :: MVar MessageArgs -> String -> String -> IO Bool
+sendRawToServer :: MVar MessageArgs -> B.ByteString -> B.ByteString -> IO Bool
 sendRawToServer mArgs server msg = do
   args <- readMVar mArgs 
   servers <- readMVar $ argServers args
   filtered <- filterM (\srv -> do addr <- getAddress srv
-                                  return $ addr == (B.pack server)) 
+                                  return $ addr == server) 
                          servers
   if not $ null filtered
-    then do sendRaw (filtered !! 0) (B.pack msg)
+    then do sendRaw (filtered !! 0) msg
             return True
     else return False
 

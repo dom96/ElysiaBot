@@ -1,3 +1,37 @@
+# Plugin behaviour 
+
+ElysiaBot spawns processes and communicates with them over stdin, the plugins then communicate back through stdout/stderr.
+
+This kind of approach has many advantages: plugins may be written in any language, plugins may be reloaded, plugins can be monitored for memory usage etc.
+
+The potential disadvantage this may have is memory usage.
+
+The communication protocol is based on JSON-RPC 1.0 and it is described below.
+
+### Dependancies
+**WARNING:** This is not yet implemented.
+
+Plugins will be able to send messages to each other, therefore depend on each other.
+An ini file will be used to store that kind of info, and detect any dependancy issues.
+
+### Compilation
+Elysia needs to know how to (compile and) run the plugin, since every plugin
+might be in a language other than haskell, for example an interpreted language.
+
+A run.sh(.bat) file will be executed at startup, or when the plugin is reloaded. 
+
+Such a file might contain something like this for Python.
+
+    python plugin.py
+  
+or for haskell
+
+    ghc --make Plugin.hs
+    ./Plugin
+    
+    -- or
+    
+    runhaskell Plugin.hs
 # Plugin specification
 
 ## Messages from *Elysia* to the *plugin*:
@@ -8,14 +42,14 @@ Message received from one of the IRC Servers that Elysia is connected to.
 
     { "method": "recv",
       "params": [ {
-                     "mNick":   {"Just": "someone"}, -- This is like that, for easy haskell<->JSON serialization.
-                     "mUser":   {"Just": "some"},
-                     "mHost":   {"Just": "user.com"},
-                     "mServer": {"Just": "Nothing"},
+                     "mNick":   "someone",
+                     "mUser":   "some",
+                     "mHost":   "user.com",
+                     "mServer": null,
                      "mCode":   "PRIVMSG",
                      "mMsg":    "|hello!",
-                     "mChan":   {"Just": "#()"},
-                     "mOther":  {"Just": []},
+                     "mChan":   "#()",
+                     "mOther":  [],
                      "mRaw":    ":someone!~some@user.com PRIVMSG #() :|hello!"
                    },
                    {
