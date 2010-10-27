@@ -11,6 +11,7 @@ import System.Posix.Signals
 import System.Posix.Process (getProcessID)
 import System.Console.GetOpt
 import System.Posix.Daemonize
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
@@ -19,7 +20,7 @@ import Modules
 import Config
 import Users
 import Commands
-
+import Plugins
 
 data Options = Options
  {  
@@ -118,10 +119,20 @@ main = do
   putStrLn $ "Loading configuration - " ++ appDatDir </> "elysia.ini"
   conf <- readConfig $ appDatDir </> "elysia.ini"
   
-  -- Create the MessageArgs MVar
-  argsMVar <- newMVar (MessageArgs mods users serversMVar)
+  -- Load the plugins
+  putStrLn $ "Loading plugins..."
+  plugins <- runPlugins
   
-  let events = [(Privmsg (onMessage argsMVar)), (Privmsg (onPrivateMessage argsMVar)), (Numeric (collectServers argsMVar))]
+  -- Create the MessageArgs MVar
+  argsMVar <- newMVar (MessageArgs mods users serversMVar plugins)
+  
+  -- Run the pluginLoops
+  mapM_ (forkIO . pluginLoop argsMVar) plugins
+  
+  let events = [(Privmsg (onMessage argsMVar))
+               ,(Privmsg (onPrivateMessage argsMVar))
+               ,(Numeric (collectServers argsMVar))
+               ,(RawMsg  (messagePlugin argsMVar))]
   let connect' = do writePID conf
                     _ <- connectServers events conf
                     return ()

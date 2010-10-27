@@ -36,7 +36,13 @@ or for haskell
 Plugins will communicate through stdout and stderr, JSON is probably the best
 format to encode the IrcMessage and other useful information.
 
-Message received by Elysia
+Pid message, this is required. It tells Elysia what the processes PID is.
+
+``{ "type": "pid", "pid": "27515" }``
+
+#### Message from Elysia to the plugin:
+
+Message received from the server
   
     { 
       "type": "recv",
@@ -67,7 +73,7 @@ quit request
       "type": "quit"
     }
   
-Replies:
+#### Messages from the plugin to Elysia:
 
 success
 
@@ -89,5 +95,12 @@ sending a message
       "msg":    "PRIVMSG #chan :Message"
     }
       
-      
+binding commands
+
+    {
+      "type": "cmdadd",
+      "command": "cmd"
+    }
+
+
   

@@ -1,9 +1,29 @@
-
+{-# LANGUAGE OverloadedStrings #-}
+import PluginUtils
+import Network.SimpleIRC.Messages
+import qualified Data.ByteString.Char8 as B
+import Data.Maybe
 main = do
-  putStrLn "{ \"type\":\"success\" }"
-  loop
+  sendPID
+  sendCmdAdd "testPlugin"
+  pluginLoop recvMsg
 
-loop = do
-  line <- getLine
-  putStrLn $ "Got line " ++ line
-  loop
+{-
+recvMsg :: Message -> IO ()
+recvMsg rcvMsg = do
+  --putStrLn $ "TestPlugin: " ++ show rcvMsg
+  
+  
+  
+  {-
+  if mCode (ircMessage rcvMsg) == "PRIVMSG" && mMsg (ircMessage rcvMsg) == "|testPlugin"
+    then sendRawMsg (B.unpack $ address $ ircServer rcvMsg) $
+            "PRIVMSG " ++ (B.unpack $ fromJust $ mChan $ ircMessage rcvMsg) ++ " :" ++ "PLlugin works!!!"
+    else return ()
+  -}
+-}
+
+recvMsg (MsgCmd msg server prefix cmd) = do
+  sendPrivmsg (B.unpack $ address server) (B.unpack $ fromJust $ mChan msg) "Plugin works!!!"
+recvMsg _ = do
+  return ()
