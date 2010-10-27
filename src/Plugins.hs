@@ -65,6 +65,9 @@ validateFields (JSObject obj) fields =
   let exist = map (get_field obj) fields
   in all (isJust) exist
 
+validateArray :: JSValue -> Int -> Bool
+validateArray (JSArray arr) num = len arr == num 
+
 -- -.-
 getJSString :: JSValue -> String
 getJSString (JSString (JSONString s)) = s

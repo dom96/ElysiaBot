@@ -144,7 +144,6 @@ onMessage argsMVar s m = do
   dest <- getDest s m
   
   sendCmdPlugins argsMVar s m
-    
   
   cmdHandler argsMVar s m dest
 
