@@ -42,15 +42,15 @@ Message received from one of the IRC Servers that Elysia is connected to.
 
     { "method": "recv",
       "params": [ {
-                     "mNick":   "someone",
-                     "mUser":   "some",
-                     "mHost":   "user.com",
-                     "mServer": null,
-                     "mCode":   "PRIVMSG",
-                     "mMsg":    "|hello!",
-                     "mChan":   "#()",
-                     "mOther":  [],
-                     "mRaw":    ":someone!~some@user.com PRIVMSG #() :|hello!"
+                     "nick":   "someone",
+                     "user":   "some",
+                     "host":   "user.com",
+                     "server": null,
+                     "code":   "PRIVMSG",
+                     "msg":    "|hello!",
+                     "chan":   "#()",
+                     "other":  [],
+                     "raw":    ":someone!~some@user.com PRIVMSG #() :|hello!"
                    },
                    {
                      "address":  "irc.freenode.net",
