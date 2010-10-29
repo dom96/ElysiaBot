@@ -8,7 +8,7 @@ The potential disadvantage this may have is memory usage.
 
 The communication protocol is based on JSON-RPC 1.0 and it is described below.
 
-### Dependancies
+### Dependencies
 **WARNING:** This is not yet implemented.
 
 Plugins will be able to send messages to each other, therefore depend on each other.

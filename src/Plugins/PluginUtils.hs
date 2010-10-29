@@ -1,5 +1,20 @@
 {-# LANGUAGE DeriveDataTypeable, OverloadedStrings, StandaloneDeriving #-}
-module PluginUtils (Message(..), MServer(..), decodeMessage, pluginLoop, sendPID, sendCmdAdd, sendRawMsg, sendPrivmsg) where
+module PluginUtils 
+  ( Message(..)
+  , MServer(..)
+  , MInfo
+  , RecvFunc
+  , decodeMessage
+  , initPlugin
+  , pluginLoop
+  , awaitResponse
+  , success
+  , sendPID
+  , sendCmdAdd
+  , sendRawMsg
+  , sendPrivmsg
+  ) where
+
 import System.IO
 import System.Posix.Process (getProcessID)
 
@@ -13,6 +28,8 @@ import Data.Maybe
 import Data.Ratio (numerator)
 
 import Control.Monad(liftM)
+
+import Control.Concurrent.MVar
 
 import qualified Data.ByteString.Char8 as B
 
@@ -57,6 +74,9 @@ data Message =
     , eId :: Int
     }
   deriving (Typeable, Show)
+
+type MInfo = MVar [B.ByteString]
+type RecvFunc = (MInfo -> Message -> IO ())
 
 validateFields :: JSValue -> [String] -> Bool
 validateFields (JSObject obj) fields =
@@ -141,9 +161,9 @@ rpcToError :: RPC -> Message
 rpcToError (RPCResponse _ (Just err) id) =
   MsgError err (fromIntegral $ numerator id)
 
-decodeMessage :: String -> Message
+decodeMessage :: B.ByteString -> Message
 decodeMessage xs = rpcToMsg $ jsToRPC parsed
-  where parsed = errorResult $ decode xs 
+  where parsed = errorResult $ decode (B.unpack xs) 
 
 readJSONIrcMessage :: JSValue -> IrcMessage
 readJSONIrcMessage js@(JSObject obj)
@@ -175,14 +195,55 @@ readJSONMaybe _ Nothing    = Nothing
 
 -- End of JSON -----------------------------------------------------------------
 
-pluginLoop :: (Message -> IO ()) -> IO ()
-pluginLoop func = do
-  -- TODO: Think of a clever way to store errors. Perhaps as a IORef [Error { id, method, error }]
-  line <- getLine
-  let msg = decodeMessage line
-  func msg
-  pluginLoop func
+-- |Takes care of the initialization of the plugin, sending the PID, adding
+-- |the commands etc.
+initPlugin :: [String] -> RecvFunc -> IO ()
+initPlugin commands func = do
+  sendPID
+  mapM_ (sendCmdAdd) commands 
+  mInfo <- newMVar []
+  pluginLoop mInfo func
 
+-- MInfo stores any messages that haven't been parsed.
+pluginLoop :: MInfo -> RecvFunc -> IO ()
+pluginLoop mInfo func = do
+  -- Check mInfo for any unparsed messages
+  info <- readMVar mInfo
+  if not $ null info
+    then mapM_ (decodeExec func) info -- Parse the messages.
+    else return ()
+  
+  line <- B.getLine
+  decodeExec func line
+  pluginLoop mInfo func
+  
+  where decodeExec func m = do 
+          let msg = decodeMessage m
+          func mInfo msg
+
+isStatus :: Message -> Bool
+isStatus (MsgSuccess _ _) = True
+isStatus (MsgError   _ _) = True
+isStatus _                = False
+
+-- |Returns true if message is a MsgSuccess, and false if it's a MsgError
+-- |raises an error otherwise.
+success :: Message -> Bool
+success (MsgSuccess _ _) = True
+success (MsgError   _ _) = False
+success _                = error "Expected either a MsgSuccess or MsgError."
+
+-- |Waits for a response, either a MsgSuccess or MsgError.
+awaitResponse :: MInfo -> IO Message
+awaitResponse mInfo = do
+  line <- B.getLine
+  let msg = decodeMessage line
+  if isStatus msg
+    then return msg
+    else do _ <- withMVar mInfo (\i -> return (line:i))
+            awaitResponse mInfo
+
+-- |Sends PID information about the current plugin.
 sendPID :: IO ()
 sendPID = do
   hSetBuffering stdout LineBuffering -- Without this, stdout isn't flushed every putStrLn
@@ -190,15 +251,19 @@ sendPID = do
   putStrLn $ "{ \"method\": \"pid\", \"params\": [ \"" ++ (show pid) ++ "\" ], \"id\": null }"
   --hFlush stdout
 
+-- |Sends the 'cmdadd' command.
+sendCmdAdd :: String -> IO ()
 sendCmdAdd cmd = do
   putStrLn $ "{ \"method\": \"cmdadd\", \"params\": [ \"" ++ cmd ++ "\" ], \"id\": 0 }"
 
+-- |Sends a raw IRC Message
 sendRawMsg :: String -> String -> IO ()
 sendRawMsg server msg = do
   let m = "{ \"method\": \"send\", \"params\": [\"" ++ server ++ "\", \"" ++ msg ++ "\"], \"id\": 0 }"
   putStrLn $ m
   --hFlush stdout
 
+-- |Sends a command, with params.
 sendCommand :: String -> String -> [String] -> IO ()
 sendCommand server cmd params = do
   let p = foldr (\a b -> (", \"" ++ a ++ "\"") ++ b) "" params
@@ -206,6 +271,7 @@ sendCommand server cmd params = do
           "\", \"" ++ cmd ++ "\"" ++ p ++ " ], \"id\": 0 }"
   putStrLn m
 
+-- |Sends a PRIVMSG command.
 sendPrivmsg :: String -> String -> String -> IO ()
 sendPrivmsg server chan msg = do
   sendCommand server "PRIVMSG" [chan, msg]

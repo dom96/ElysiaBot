@@ -4,27 +4,14 @@ import Network.SimpleIRC.Messages
 import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 main = do
-  sendPID
-  sendCmdAdd "testPlugin"
-  pluginLoop recvMsg
+  initPlugin ["testPlugin"] recvMsg
 
-{-
-recvMsg :: Message -> IO ()
-recvMsg rcvMsg = do
-  --putStrLn $ "TestPlugin: " ++ show rcvMsg
+recvMsg mInfo (MsgCmd msg server prefix cmd) = do
+  let serv = (B.unpack $ address server)
+      chan = (B.unpack $ fromJust $ mChan msg) 
   
+  sendPrivmsg serv chan "Plugin works!!!"
+  sendPrivmsg serv chan (B.unpack $ mMsg msg)
   
-  
-  {-
-  if mCode (ircMessage rcvMsg) == "PRIVMSG" && mMsg (ircMessage rcvMsg) == "|testPlugin"
-    then sendRawMsg (B.unpack $ address $ ircServer rcvMsg) $
-            "PRIVMSG " ++ (B.unpack $ fromJust $ mChan $ ircMessage rcvMsg) ++ " :" ++ "PLlugin works!!!"
-    else return ()
-  -}
--}
-
-recvMsg (MsgCmd msg server prefix cmd) = do
-  sendPrivmsg (B.unpack $ address server) (B.unpack $ fromJust $ mChan msg) "Plugin works!!!"
-  sendPrivmsg (B.unpack $ address server) (B.unpack $ fromJust $ mChan msg) (B.unpack $ mMsg msg)
-recvMsg _ = do
+recvMsg _ _ = do
   return ()

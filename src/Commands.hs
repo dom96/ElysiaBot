@@ -32,6 +32,8 @@ safeCheckArg :: B.ByteString -> Int -> Bool
 safeCheckArg str index = (length word - 1) >= index
   where word = B.words str
 
+-- TODO: CLean up into smaller functions.
+
 cmdHandler :: MVar MessageArgs -> MIrc -> IrcMessage -> B.ByteString -> IO ()
 cmdHandler argsMVar mIrc m dest
   | msg `isCmd` "hai" = do
@@ -95,6 +97,21 @@ cmdHandler argsMVar mIrc m dest
            ("Users online: " `B.append` (B.pack $ onUsers))
       else sendMsg mIrc dest "No users online"
   
+  | msg `isCmd` "plugins" = do
+    args <- readMVar argsMVar
+    let lenPlugins = length $ plugins args
+    if lenPlugins == 0
+      then sendMsg mIrc dest "No plugins loaded."
+      else sendMsg mIrc dest ((B.pack $ show lenPlugins) `B.append` " plugin(s) loaded.")
+  
+  | msg `isCmd` "desc" && safeCheckArg msg 1 = do
+    args <- readMVar argsMVar
+    let name   = B.unpack $ fromJust $ safeGetArg msg 1
+    plugin <- findPlugin argsMVar (B.pack name)
+    if isJust plugin
+      then sendMsg mIrc dest (B.pack $ pDescription (fromJust plugin))
+      else sendMsg mIrc dest "Plugin not found."
+    
   | B.isPrefixOf prefix msg = do
     -- If no commands are defined for this command
     -- check if they are defined in the modules

@@ -39,11 +39,12 @@ data Plugin = Plugin
   { pName        :: String
   , pDescription :: String
   , pDepends     :: [String]
+  , pLanguage    :: String
   , pStdout      :: Handle
   , pStderr      :: Handle
   , pStdin       :: Handle
   , pPHandle     :: ProcessHandle
   , pPid         :: Maybe Int
   , pCmds        :: [String]
-  , pErrors      :: [String]
+  , pErrors      :: [String] -- List of all the Messages that were received through stderr.
   }

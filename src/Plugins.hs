@@ -1,16 +1,25 @@
-{-# LANGUAGE DeriveDataTypeable, OverloadedStrings, StandaloneDeriving #-}
-module Plugins (PluginCommand(..), writeCommand, runPlugins, pluginLoop, messagePlugin) where
+{-# LANGUAGE DeriveDataTypeable, OverloadedStrings, StandaloneDeriving, PackageImports #-}
+module Plugins 
+  (PluginCommand(..)
+  , writeCommand
+  , runPlugins
+  , pluginLoop
+  , messagePlugin
+  , findPlugin
+  ) where
 import System.IO
 import System.IO.Error (try, catch, isEOFError)
 import System.Process
 import System.FilePath
 import System.Directory
+import System.FilePath ((</>))
 
 import Control.Concurrent
 import Control.Concurrent.MVar (MVar)
 import Control.Monad
 import Control.Applicative
 import Control.Exception (IOException)
+import "mtl" Control.Monad.Error
 
 import Network.SimpleIRC
 
@@ -19,9 +28,11 @@ import Text.JSON.Generic
 import Text.JSON.Types
 
 import Data.Maybe
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, find)
 import Data.Ratio (numerator)
 import Data.Char (toLower)
+import Data.ConfigFile
+
 
 import qualified Data.ByteString.Char8 as B
 
@@ -257,6 +268,41 @@ showJSONCommand (PCError err id) = do
 
 -- End of JSON -----------------------------------------------------------------
 
+readConfig plugin filename = do
+  readfile emptyCP filename >>= (getData plugin) . handleError
+
+handleError :: Either (CPErrorData, [Char]) a -> a
+handleError x =
+  case x of
+    Left (ParseError err, err') -> error $ "Parse error: \n"
+                                   ++ err ++ "\n" ++ err'
+    Left err                    -> error $ show err
+    Right c                     -> c
+
+getData plugin cp = do
+  config <- runErrorT $ do
+    name <- get cp "DEFAULT" "name"
+    desc <- get cp "DEFAULT" "description"
+    depends <- get cp "DEFAULT" "depends"
+    language <- get cp "DEFAULT" "language"
+    
+    return $! plugin { pName = name, pDescription = desc,
+                       pDepends = (readLst "depends" depends), 
+                       pLanguage = language }
+
+  return $ handleError config
+
+readLst :: String -> String -> [String]
+readLst opt [] = []
+readLst opt xs
+  | "," `isPrefixOf` xs = error $ "Invalid list for \"" ++ opt ++ "\""
+  | otherwise = 
+    (noSpace first) : (readLst opt $ drop 1 $ dropWhile (/= ',') second)
+    where (first, second) = break (== ',') xs
+          noSpace f       = takeWhile (/= ' ') (dropWhile (== ' ') f)
+  
+-- End of config reading -------------------------------------------------------
+
 isCorrectDir dir f = do
   r <- doesDirectoryExist (dir </> f)
   return $ r && f /= "." && f /= ".." && not ("." `isPrefixOf` f)
@@ -273,15 +319,16 @@ runPlugin plDir = do
   currWorkDir <- getCurrentDirectory
   let plWorkDir = currWorkDir </> "Plugins/" </> plDir
       shFile    = plWorkDir </> "run.sh"
+      iniFile   = plWorkDir </> (plDir ++ ".ini") 
   putStrLn $ "-- " ++ plWorkDir
   (inpH, outH, errH, pid) <- runInteractiveProcess ("./run.sh") [] (Just plWorkDir) Nothing
   hSetBuffering outH LineBuffering
   hSetBuffering errH LineBuffering
   hSetBuffering inpH LineBuffering
 
-  -- TODO: read the plugin.ini file.
-  newMVar $ 
-    Plugin plDir "" [] outH errH inpH pid Nothing [] []
+  let plugin = Plugin plDir "" [] "" outH errH inpH pid Nothing [] []
+  configPlugin <- readConfig plugin iniFile
+  newMVar $ configPlugin
 
 getAllLines :: Handle -> IO [String]
 getAllLines h = liftA2 (:) first rest `catch` (\_ -> return []) 
@@ -307,9 +354,9 @@ pluginLoop mArgs mPlugin = do
       line <- hGetLine (pStdout plugin)
       putStrLn $ "Got line from plugin(" ++ pName plugin ++ "): " ++ line
       
-      when ("{" `isPrefixOf` line) $ do 
+      when ("{" `isPrefixOf` line) $ do -- Make sure the line starts with {
         let decoded = decodeMessage line
-
+        
         case decoded of
           Right (MsgSend addr msg id) -> do 
             ret <- sendRawToServer mArgs addr msg
@@ -324,7 +371,6 @@ pluginLoop mArgs mPlugin = do
             writeCommand (PCSuccess "Command added." id) mPlugin
           Left  (id, err)             -> do
             writeCommand (PCError err id) mPlugin
-            
       
       pluginLoop mArgs mPlugin
     else do
@@ -353,15 +399,32 @@ sendRawToServer mArgs server msg = do
 writeCommand :: PluginCommand -> MVar Plugin -> IO ()
 writeCommand cmd mPlugin = do
   plugin <- readMVar mPlugin
-  (JSObject json) <- showJSONCommand cmd
-  --putStrLn $ "Sending to plugin: " ++ (showJSObject json) ""
-  hPutStrLn (pStdin plugin) ((showJSObject json) "")
   
+  (JSObject json) <- showJSONCommand cmd
+  let js = ((showJSObject json) "")
+  --putStrLn $ "Sending to plugin: " ++ (showJSObject json) ""
+  hPutStrLn (pStdin plugin) js -- TODO: Check for errors, if elysia tries to
+                               -- use this function after the plugin crashes,
+                               -- it will fail.
+
+-- Get's called whenever a message is received by a server.
 messagePlugin :: MVar MessageArgs -> EventFunc
 messagePlugin mArgs s m = do
   args <- readMVar mArgs
   mapM_ (writeCommand (PCMessage m s)) (plugins args)
 
+findPlugin :: MVar MessageArgs -> B.ByteString -> IO (Maybe Plugin)
+findPlugin mArgs name = do
+  args <- readMVar mArgs
+  pls <- filterM (\p -> do pl <- readMVar p
+                           putStrLn $ pName pl
+                           return $ pName pl == (B.unpack name))
+                 (plugins args)
+  if null pls
+    then return Nothing
+    else do plugin <- readMVar (pls !! 0)
+            return $ Just plugin
 
-
-
+--unloadPlugin :: MVar MessageArgs -> B.ByteString -> IO Bool
+--unloadPlugin mArgs name = do
+  
