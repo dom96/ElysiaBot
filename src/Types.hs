@@ -36,17 +36,17 @@ data User = User
   
 -- Plugins
 data Plugin = Plugin
-  { pName        :: String
-  , pDescription :: String
-  , pDepends     :: [String]
-  , pLanguage    :: String
+  { pName        :: B.ByteString
+  , pDescription :: B.ByteString
+  , pDepends     :: [B.ByteString]
+  , pLanguage    :: B.ByteString
   , pStdout      :: Handle
   , pStderr      :: Handle
   , pStdin       :: Handle
   , pPHandle     :: ProcessHandle
   , pPid         :: Maybe Int
-  , pCmds        :: [String] -- List of Elysia command bindings. e.g. test will bind to <prefix here>test
+  , pCmds        :: [B.ByteString] -- List of Elysia command bindings. e.g. test will bind to <prefix here>test
   , pCodes       :: [B.ByteString] -- List of IRC Command bindings. e.g. PRIVMSG, NOTICE...
   , pAllCodes    :: Bool     -- States whether all IRC Commands should be binded.
-  , pErrors      :: [String] -- List of all the Messages that were received through stderr.
+  , pErrors      :: [B.ByteString] -- List of all the Messages that were received through stderr.
   }

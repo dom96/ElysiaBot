@@ -298,20 +298,20 @@ getData plugin cp = do
     depends <- get cp "DEFAULT" "depends"
     language <- get cp "DEFAULT" "language"
     
-    return $! plugin { pName = name, pDescription = desc,
+    return $! plugin { pName = (B.pack name), pDescription = (B.pack desc),
                        pDepends = (readLst "depends" depends), 
-                       pLanguage = language }
+                       pLanguage = (B.pack language) }
 
   return $ handleError config
 
-readLst :: String -> String -> [String]
+readLst :: String -> String -> [B.ByteString]
 readLst opt [] = []
 readLst opt xs
   | "," `isPrefixOf` xs = error $ "Invalid list for \"" ++ opt ++ "\""
   | otherwise = 
     (noSpace first) : (readLst opt $ drop 1 $ dropWhile (/= ',') second)
     where (first, second) = break (== ',') xs
-          noSpace f       = takeWhile (/= ' ') (dropWhile (== ' ') f)
+          noSpace f       = B.pack $ takeWhile (/= ' ') (dropWhile (== ' ') f)
   
 -- End of config reading -------------------------------------------------------
 
@@ -338,7 +338,7 @@ runPlugin plDir = do
   hSetBuffering errH LineBuffering
   hSetBuffering inpH LineBuffering
 
-  let plugin = Plugin plDir "" [] "" outH errH inpH pid Nothing [] [] False []
+  let plugin = Plugin (B.pack plDir) "" [] "" outH errH inpH pid Nothing [] [] False []
   configPlugin <- readConfig plugin iniFile
   newMVar $ configPlugin
 
@@ -364,7 +364,7 @@ pluginLoop mArgs mPlugin = do
   if not outEof
     then do
       line <- hGetLine (pStdout plugin)
-      putStrLn $ "Got line from plugin(" ++ pName plugin ++ "): " ++ line
+      putStrLn $ "Got line from plugin(" ++ (B.unpack $ pName plugin) ++ "): " ++ line
       
       when ("{" `isPrefixOf` line) $ do -- Make sure the line starts with {
         let decoded = decodeMessage line
@@ -379,7 +379,7 @@ pluginLoop mArgs mPlugin = do
             _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
             return ()
           Right (MsgCmdAdd cmd id)    -> do 
-            _ <- swapMVar mPlugin (plugin {pCmds = (B.unpack cmd):pCmds plugin}) 
+            _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
             writeCommand (PCSuccess "Command added." id) mPlugin
           Right (MsgIrcAdd code id)    -> do 
             _ <- swapMVar mPlugin (plugin {pCodes = code:pCodes plugin}) 
@@ -393,7 +393,7 @@ pluginLoop mArgs mPlugin = do
       errs <- getErrs plugin
 
       -- Plugin crashed
-      putStrLn $ "WARNING: Plugin(" ++ pName plugin ++ ") crashed, " ++ 
+      putStrLn $ "WARNING: Plugin(" ++ (B.unpack $ pName plugin) ++ ") crashed, " ++ 
                  errs
       args <- takeMVar mArgs
       let filt = filter (mPlugin /=) (plugins args)
@@ -445,8 +445,8 @@ findPlugin :: MVar MessageArgs -> B.ByteString -> IO (Maybe Plugin)
 findPlugin mArgs name = do
   args <- readMVar mArgs
   pls <- filterM (\p -> do pl <- readMVar p
-                           putStrLn $ pName pl
-                           return $ pName pl == (B.unpack name))
+                           B.putStrLn $ pName pl
+                           return $ pName pl == name)
                  (plugins args)
   if null pls
     then return Nothing

@@ -109,7 +109,7 @@ cmdHandler argsMVar mIrc m dest
     let name   = B.unpack $ fromJust $ safeGetArg msg 1
     plugin <- findPlugin argsMVar (B.pack name)
     if isJust plugin
-      then sendMsg mIrc dest (B.pack $ pDescription (fromJust plugin))
+      then sendMsg mIrc dest (pDescription (fromJust plugin))
       else sendMsg mIrc dest "Plugin not found."
     
   | B.isPrefixOf prefix msg = do
@@ -139,8 +139,8 @@ dropPrefix m = B.drop (B.length prefix) (mMsg m)
 pluginHasCmd :: IrcMessage -> MVar Plugin -> IO Bool
 pluginHasCmd msg mPlugin = do
   plugin <- readMVar mPlugin
-  let cmd      = B.unpack $ dropPrefix msg
-      maybeCmd = find ((flip isPrefixOf) cmd) (pCmds plugin)
+  let cmd      = dropPrefix msg
+      maybeCmd = find ((flip B.isPrefixOf) cmd) (pCmds plugin)
   return $ isJust maybeCmd
 
 
