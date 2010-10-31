@@ -38,7 +38,7 @@ or for haskell
 
 ### Requests
 
-Message received from one of the IRC Servers that Elysia is connected to.
+Message received from one of the IRC Servers that Elysia is connected to(**recv**):
 
     { "method": "recv",
       "params": [ {
@@ -62,7 +62,7 @@ Message received from one of the IRC Servers that Elysia is connected to.
       "id": null
     }
 
-A message which begins with the prefix has been received, e.g. "|hello" (If the prefix is "|")
+A message which begins with the prefix has been received(**cmd**), e.g. "|hello" (If the prefix is "|")
 
 This is basically the same as the above, except for another two params, the prefix and command. e.g. prefix = "|" and command = "hello" in the above example, and also of course the method name is "cmd".
 
@@ -93,14 +93,23 @@ Sending a message to a server:
 
 This will return a confirmation whether the server was found and the message was sent. (It does not check whether the server accepted the message)
 
-Binding commands:
+Binding Elysia commands:
 
     { "method": "cmdadd",
       "params": [ "cmd" ],
       "id": 0
     }
 
-This will return a confirmation whether the command was successfully added.
+This will return a confirmation; stating whether the command was successfully added. When a command is received and the plugin has it binded, the plugin will receive a "cmd" request.
+
+Binding IRC commands:
+
+    { "method": "ircadd",
+      "params": [ "PRIVMSG" ],
+      "id": 0
+    }
+
+This is similar to the above, except that it binds IRC specific messages. When an IRC Message is received and the plugin has it binded, the plugin will receive a "recv" request.
 
 PID -- This should be sent to Elysia as soon as the plugin starts:
 

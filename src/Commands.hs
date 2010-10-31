@@ -136,25 +136,28 @@ cmdHandler argsMVar mIrc m dest
 dropPrefix :: IrcMessage -> B.ByteString
 dropPrefix m = B.drop (B.length prefix) (mMsg m)
 
-pluginHasCmd :: IrcMessage -> MVar Plugin -> IO (Maybe (MVar Plugin))
+pluginHasCmd :: IrcMessage -> MVar Plugin -> IO Bool
 pluginHasCmd msg mPlugin = do
   plugin <- readMVar mPlugin
   let cmd      = B.unpack $ dropPrefix msg
       maybeCmd = find ((flip isPrefixOf) cmd) (pCmds plugin)
-  if isJust maybeCmd
-    then return $ Just mPlugin
-    else return Nothing
+  return $ isJust maybeCmd
+
 
 sendCmdPlugins :: MVar MessageArgs -> MIrc -> IrcMessage -> IO ()
 sendCmdPlugins mArgs s msg = do
   -- Check if any plugin has this command binded
   args <- readMVar mArgs
   if B.isPrefixOf prefix (mMsg msg)
-    then do p <- mapM (pluginHasCmd msg) (plugins args)
-            let plugins = catMaybes p
-            putStrLn $ "Replied to " ++ show (length plugins) ++ " cmd from plugins."
-            mapM_ (writeCommand (PCCmdMsg msg s (B.unpack prefix) (B.unpack $ dropPrefix msg))) plugins
+    then mapM_ (condWrite) (plugins args)
     else return ()
+
+  where cmd = B.unpack $ dropPrefix msg
+        condWrite p = do
+          hasCmd <- pluginHasCmd msg p
+          if hasCmd
+            then writeCommand (PCCmdMsg msg s (B.unpack prefix) cmd) p
+            else return ()
 
 onMessage :: MVar MessageArgs -> EventFunc
 onMessage argsMVar s m = do

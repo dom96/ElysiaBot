@@ -59,6 +59,9 @@ data Message =
     }
   | MsgCmdAdd
     { command  :: B.ByteString, caId :: Int }
+  | MsgIrcAdd
+    { code     :: B.ByteString, iaId :: Int }
+    
   | MsgPid
     { pid      :: Int }
   deriving Show
@@ -118,6 +121,7 @@ rpcToMsg :: RPC -> Either (Int, B.ByteString) Message
 rpcToMsg req@(RPCRequest method _ _)
   | method == "send"    = rpcToSend   req
   | method == "cmdadd"  = rpcToCmdAdd req
+  | method == "ircadd"  = rpcToIrcAdd req
   | method == "pid"     = rpcToPID    req 
 
 -- Turns an RPC(Which must be a RPCRequest with a method of "send") into a MsgSend.
@@ -182,6 +186,14 @@ rpcToCmdAdd (RPCRequest _ (JSArray params) (Just id)) =
   where cmd = getJSString $ params !! 0
 
 rpcToCmdAdd (RPCRequest _ (JSArray params) Nothing) = 
+  error "id is Nothing, expected something."
+
+rpcToIrcAdd :: RPC -> Either (Int, B.ByteString) Message
+rpcToIrcAdd (RPCRequest _ (JSArray params) (Just id)) = 
+  Right $ MsgIrcAdd code (fromIntegral $ numerator id)
+  where code = getJSString $ params !! 0
+
+rpcToIrcAdd (RPCRequest _ (JSArray params) Nothing) = 
   error "id is Nothing, expected something."
 
 rpcToPID :: RPC -> Either (Int, B.ByteString) Message
@@ -326,7 +338,7 @@ runPlugin plDir = do
   hSetBuffering errH LineBuffering
   hSetBuffering inpH LineBuffering
 
-  let plugin = Plugin plDir "" [] "" outH errH inpH pid Nothing [] []
+  let plugin = Plugin plDir "" [] "" outH errH inpH pid Nothing [] [] False []
   configPlugin <- readConfig plugin iniFile
   newMVar $ configPlugin
 
@@ -369,6 +381,9 @@ pluginLoop mArgs mPlugin = do
           Right (MsgCmdAdd cmd id)    -> do 
             _ <- swapMVar mPlugin (plugin {pCmds = (B.unpack cmd):pCmds plugin}) 
             writeCommand (PCSuccess "Command added." id) mPlugin
+          Right (MsgIrcAdd code id)    -> do 
+            _ <- swapMVar mPlugin (plugin {pCodes = code:pCodes plugin}) 
+            writeCommand (PCSuccess "IRC Command added." id) mPlugin
           Left  (id, err)             -> do
             writeCommand (PCError err id) mPlugin
       
@@ -407,11 +422,24 @@ writeCommand cmd mPlugin = do
                                -- use this function after the plugin crashes,
                                -- it will fail.
 
+pluginHasCode :: B.ByteString -> MVar Plugin -> IO Bool
+pluginHasCode code mPlugin = do
+  plugin <- readMVar mPlugin
+  if pAllCodes plugin
+    then return True
+    else return $ code `elem` (pCodes plugin)
+
 -- Get's called whenever a message is received by a server.
 messagePlugin :: MVar MessageArgs -> EventFunc
 messagePlugin mArgs s m = do
   args <- readMVar mArgs
-  mapM_ (writeCommand (PCMessage m s)) (plugins args)
+  mapM_ (condWrite) (plugins args)
+
+  where condWrite p = do
+          hasCode <- pluginHasCode (mCode m) p
+          if hasCode
+            then writeCommand (PCMessage m s) p
+            else return ()
 
 findPlugin :: MVar MessageArgs -> B.ByteString -> IO (Maybe Plugin)
 findPlugin mArgs name = do
