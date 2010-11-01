@@ -38,12 +38,12 @@ data RPC =
     RPCRequest
       { reqMethod :: B.ByteString
       , reqParams :: JSValue
-      , reqId     :: Maybe Rational
+      , reqId     :: Maybe Integer
       } 
   | RPCResponse 
       { rspResult :: B.ByteString
       , rspError  :: Maybe B.ByteString
-      , rspId     :: Rational
+      , rspId     :: Integer
       }
   deriving (Typeable, Show)
 
@@ -114,7 +114,7 @@ jsToRPC js@(JSObject obj)
          { reqMethod = getJSString $ fromJust $ get_field obj "method"
          , reqParams = fromJust $ get_field obj "params" 
          , reqId     = if isJust rID 
-                          then Just $ getJSRatio $ fromJust rID
+                          then Just $ numerator $ getJSRatio $ fromJust rID
                           else Nothing 
          }
 
@@ -125,7 +125,7 @@ jsToRPC js@(JSObject obj)
          , rspError  = if isJust rErr
                          then Just $ getJSString $ fromJust rErr
                          else Nothing
-         , rspId     = getJSRatio $ fromJust $ get_field obj "id"
+         , rspId     = numerator $ getJSRatio $ fromJust $ get_field obj "id"
          }
 
 -- This function just checks the reqMethod of RPCRequest.
@@ -156,11 +156,11 @@ rpcToCmd (RPCRequest _ (JSArray params) _) =
 
 rpcToSuccess :: RPC -> Message
 rpcToSuccess (RPCResponse result _ id) =
-  MsgSuccess result (fromIntegral $ numerator id)
+  MsgSuccess result (fromIntegral $ id)
 
 rpcToError :: RPC -> Message
 rpcToError (RPCResponse _ (Just err) id) =
-  MsgError err (fromIntegral $ numerator id)
+  MsgError err (fromIntegral $ id)
 
 decodeMessage :: B.ByteString -> Message
 decodeMessage xs = rpcToMsg $ jsToRPC parsed
@@ -194,7 +194,27 @@ readJSONMaybe :: JSON t => (JSValue -> t) -> Maybe JSValue -> Maybe t
 readJSONMaybe f (Just val) = Just $ f val
 readJSONMaybe _ Nothing    = Nothing
 
--- End of JSON -----------------------------------------------------------------
+-- End of reading JSON ---------------------------------------------------------
+
+showJSONMaybe :: (JSON t) => Maybe t -> JSValue
+showJSONMaybe (Just a)  = showJSON a
+showJSONMaybe (Nothing) = JSNull
+
+showJSONRPC :: RPC -> JSValue
+showJSONRPC (RPCRequest method params id) =
+  JSObject $ toJSObject $
+    [("method", showJSON method)
+    ,("params", params)
+    ,("id", showJSONMaybe id)
+    ]
+showJSONRPC (RPCResponse result error id) =
+  JSObject $ toJSObject $
+    [("result", showJSON result)
+    ,("error", showJSONMaybe error)
+    ,("id", showJSON id)
+    ]
+
+-- End of writing JSON ---------------------------------------------------------
 
 -- |Takes care of the initialization of the plugin, sending the PID, adding
 -- |the commands/codes etc.
@@ -245,41 +265,54 @@ awaitResponse mInfo = do
     else do _ <- withMVar mInfo (\i -> return (line:i))
             awaitResponse mInfo
 
--- |Sends PID information about the current plugin.
+sendRPC :: RPC -> IO ()
+sendRPC rpc = do
+  let (JSObject json) = showJSONRPC rpc
+  putStrLn $ (showJSObject json) ""
+
+-- |Sends PID information about the current plugin, this function also
+-- |changes the buffering of stdout.
 sendPID :: IO ()
 sendPID = do
   hSetBuffering stdout LineBuffering -- Without this, stdout isn't flushed every putStrLn
   pid <- getProcessID
-  putStrLn $ "{ \"method\": \"pid\", \"params\": [ \"" ++ (show pid) ++ "\" ], \"id\": null }"
+  let req = RPCRequest "pid" (JSArray [(showJSON (show pid))]) Nothing
+  
+  sendRPC req
   --hFlush stdout
+
+-- TODO: Make the ID's unique.
 
 -- |Sends the 'cmdadd' command.
 sendCmdAdd :: String -> IO ()
 sendCmdAdd cmd = do
-  putStrLn $ "{ \"method\": \"cmdadd\", \"params\": [ \"" ++ cmd ++ "\" ], \"id\": 0 }"
+  let req = RPCRequest "cmdadd" (JSArray [(showJSON cmd)]) (Just 0)
+  sendRPC req
 
 -- |Sends the 'ircadd' command.
 sendIrcAdd :: String -> IO ()
 sendIrcAdd code = do
-  putStrLn $ "{ \"method\": \"ircadd\", \"params\": [ \"" ++ code ++ "\" ], \"id\": 0 }"
+  let req = RPCRequest "ircadd" (JSArray [(showJSON code)]) (Just 0)
+  sendRPC req
 
 -- |Sends a raw IRC Message
-sendRawMsg :: String -> String -> IO ()
+sendRawMsg :: B.ByteString -> B.ByteString -> IO ()
 sendRawMsg server msg = do
-  let m = "{ \"method\": \"send\", \"params\": [\"" ++ server ++ "\", \"" ++ msg ++ "\"], \"id\": 0 }"
-  putStrLn $ m
+  let req = RPCRequest "send" (JSArray [(showJSON server), (showJSON msg)]) 
+                       (Just 0)
+  sendRPC req
   --hFlush stdout
 
 -- |Sends a command, with params.
-sendCommand :: String -> String -> [String] -> IO ()
+sendCommand :: B.ByteString -> B.ByteString -> [B.ByteString] -> IO ()
 sendCommand server cmd params = do
-  let p = foldr (\a b -> (", \"" ++ a ++ "\"") ++ b) "" params
-      m = "{ \"method\": \"send\", \"params\": [\"" ++ server ++
-          "\", \"" ++ cmd ++ "\"" ++ p ++ " ], \"id\": 0 }"
-  putStrLn m
+  let p   = [(showJSON server), (showJSON cmd)] ++ 
+            map showJSON params
+      req = RPCRequest "send" (JSArray p) (Just 0)
+  sendRPC req
 
 -- |Sends a PRIVMSG command.
-sendPrivmsg :: String -> String -> String -> IO ()
+sendPrivmsg :: B.ByteString -> B.ByteString -> B.ByteString -> IO ()
 sendPrivmsg server chan msg = do
   sendCommand server "PRIVMSG" [chan, msg]
 
