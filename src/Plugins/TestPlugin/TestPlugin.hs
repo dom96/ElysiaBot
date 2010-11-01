@@ -4,7 +4,7 @@ import Network.SimpleIRC.Messages
 import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 main = do
-  initPlugin ["testPlugin"] recvMsg
+  initPlugin ["testPlugin"] [] recvMsg
 
 recvMsg mInfo (MsgCmd msg server prefix cmd) = do
   let serv = (B.unpack $ address server)

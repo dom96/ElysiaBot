@@ -11,6 +11,7 @@ module PluginUtils
   , success
   , sendPID
   , sendCmdAdd
+  , sendIrcAdd
   , sendRawMsg
   , sendPrivmsg
   ) where
@@ -196,11 +197,12 @@ readJSONMaybe _ Nothing    = Nothing
 -- End of JSON -----------------------------------------------------------------
 
 -- |Takes care of the initialization of the plugin, sending the PID, adding
--- |the commands etc.
-initPlugin :: [String] -> RecvFunc -> IO ()
-initPlugin commands func = do
+-- |the commands/codes etc.
+initPlugin :: [String] -> [String] -> RecvFunc -> IO ()
+initPlugin commands codes func = do
   sendPID
-  mapM_ (sendCmdAdd) commands 
+  mapM_ (sendCmdAdd) commands
+  mapM_ (sendIrcAdd) codes
   mInfo <- newMVar []
   pluginLoop mInfo func
 
@@ -255,6 +257,11 @@ sendPID = do
 sendCmdAdd :: String -> IO ()
 sendCmdAdd cmd = do
   putStrLn $ "{ \"method\": \"cmdadd\", \"params\": [ \"" ++ cmd ++ "\" ], \"id\": 0 }"
+
+-- |Sends the 'ircadd' command.
+sendIrcAdd :: String -> IO ()
+sendIrcAdd code = do
+  putStrLn $ "{ \"method\": \"ircadd\", \"params\": [ \"" ++ code ++ "\" ], \"id\": 0 }"
 
 -- |Sends a raw IRC Message
 sendRawMsg :: String -> String -> IO ()
