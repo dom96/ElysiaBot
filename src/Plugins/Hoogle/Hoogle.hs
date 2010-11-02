@@ -11,14 +11,13 @@ import System.IO
 main = do
   initPlugin ["hoogle"] [] onHoogle
   
-onHoogle mInfo (MsgCmd cMsg server prefix cmd) = do
-  evalResult <- findM searchTerm
+onHoogle mInfo (MsgCmd cMsg server prefix cmd rest) = do
+  evalResult <- findM (B.unpack rest)
   either (\err -> sendMsg $ "Error: " `B.append` (B.pack err))
-         (\res -> mapM_ sendMsg (B.lines $ (B.pack $ limitLines 200 4 res) ) )
+         (\res -> mapM_ sendMsg (B.lines $ B.pack $ limitLines 200 4 res) )
          evalResult
   where addr = address server
         msg = mMsg cMsg
-        searchTerm = (B.unpack $ B.unwords (drop 1 $ B.words msg))
         sendMsg m = sendPrivmsg addr (fromJust $ mChan cMsg) m
 onHoogle _ _ = return ()  
 

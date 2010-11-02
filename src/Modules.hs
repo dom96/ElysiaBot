@@ -11,7 +11,6 @@ import Types
 
 -- Modules
 import qualified Modules.Hi.Hi as Hi
-import qualified Modules.Eval2.Eval2 as Eval2
 import qualified Modules.GDict.GDict as GDict
 import qualified Modules.Github.Github as Github
 
@@ -20,13 +19,11 @@ import qualified Modules.Github.Github as Github
 loadMods :: String -> String -> MVar [MIrc] -> IO [IrcModule]
 loadMods dir appData serversM = do
   Hi.onLoad serversM appData
-  Eval2.onLoad serversM appData
   GDict.onLoad serversM appData
   githubCmds <- Github.onLoad serversM appData
 
   return $
     [ IrcModule Hi.moduleCmds Hi.moduleRaws "Hi" []
-    , IrcModule Eval2.moduleCmds Eval2.moduleRaws "Eval2" []
     , IrcModule GDict.moduleCmds GDict.moduleRaws "Dictionary" []
     , IrcModule githubCmds Github.moduleRaws "GitHub" []
     ]

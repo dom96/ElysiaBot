@@ -64,6 +64,7 @@ data Message =
     , ircServer  :: MServer
     , prefix     :: B.ByteString
     , cmd        :: B.ByteString
+    , rest       :: B.ByteString
     } 
   | MsgQuit
   | MsgSuccess
@@ -148,11 +149,12 @@ rpcToCmd :: RPC -> Message
 rpcToCmd (RPCRequest _ (JSArray params) _) = 
   MsgCmd (readJSONIrcMessage msg)
          (errorResult (fromJSON server :: Result MServer))
-         prfx command
+         prfx command rest
   where msg     = params !! 0
         server  = params !! 1
         prfx    = getJSString $ params !! 2
         command = getJSString $ params !! 3
+        rest    = getJSString $ params !! 4
 
 rpcToSuccess :: RPC -> Message
 rpcToSuccess (RPCResponse result _ id) =

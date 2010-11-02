@@ -62,9 +62,9 @@ Message received from one of the IRC Servers that Elysia is connected to(**recv*
       "id": null
     }
 
-A message which begins with the prefix has been received(**cmd**), e.g. "|hello" (If the prefix is "|")
+A message which begins with the prefix has been received(**cmd**), e.g. "|hello world" (If the prefix is "|")
 
-This is basically the same as the above, except for another two params, the prefix and command. e.g. prefix = "|" and command = "hello" in the above example, and also of course the method name is "cmd".
+This is basically the same as the above, except for another three params, the prefix, command and the message without the two. e.g. prefix = "|", command = "hello" and "world" in the above example, and also of course the method name is "cmd".
 
 ### Responses
 

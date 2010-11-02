@@ -69,7 +69,9 @@ data Message =
 data PluginCommand = PluginCommand
   -- Requests
   | PCMessage IrcMessage MIrc
-  | PCCmdMsg  IrcMessage MIrc String String -- IrcMessage, Server, prefix, (msg without prefix)
+  | PCCmdMsg  IrcMessage MIrc B.ByteString B.ByteString B.ByteString 
+            -- IrcMessage, Server, prefix, 
+            -- (the command.), (msg without prefix and without command)
   | PCQuit
   -- Responses
   | PCSuccess B.ByteString Int -- result message, id
@@ -248,12 +250,12 @@ showJSONCommand (PCMessage msg serv) = do
     ,("id", JSNull)
     ]
 
-showJSONCommand (PCCmdMsg msg serv prefix cmd) = do
+showJSONCommand (PCCmdMsg msg serv prefix cmd rest) = do
   servJSON <- showJSONMIrc serv
   return $ JSObject $ toJSObject $
     [("method", showJSON ("cmd" :: String))
     ,("params", JSArray [showJSONIrcMessage msg, 
-                         servJSON, showJSON prefix, showJSON cmd])
+                         servJSON, showJSON prefix, showJSON cmd, showJSON rest])
     ,("id", JSNull)
     ]
 
@@ -382,7 +384,8 @@ pluginLoop mArgs mPlugin = do
             _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
             writeCommand (PCSuccess "Command added." id) mPlugin
           Right (MsgIrcAdd code id)    -> do 
-            _ <- swapMVar mPlugin (plugin {pCodes = code:pCodes plugin}) 
+            _ <- swapMVar mPlugin (
+                 plugin {pCodes = (B.map toLower code):pCodes plugin})
             writeCommand (PCSuccess "IRC Command added." id) mPlugin
           Left  (id, err)             -> do
             writeCommand (PCError err id) mPlugin
@@ -427,7 +430,7 @@ pluginHasCode code mPlugin = do
   plugin <- readMVar mPlugin
   if pAllCodes plugin
     then return True
-    else return $ code `elem` (pCodes plugin)
+    else return $ (B.map toLower code) `elem` (pCodes plugin)
 
 -- Get's called whenever a message is received by a server.
 messagePlugin :: MVar MessageArgs -> EventFunc
@@ -445,8 +448,7 @@ findPlugin :: MVar MessageArgs -> B.ByteString -> IO (Maybe Plugin)
 findPlugin mArgs name = do
   args <- readMVar mArgs
   pls <- filterM (\p -> do pl <- readMVar p
-                           B.putStrLn $ pName pl
-                           return $ pName pl == name)
+                           return $ (B.map toLower $ pName pl) == (B.map toLower name))
                  (plugins args)
   if null pls
     then return Nothing

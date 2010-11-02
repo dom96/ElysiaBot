@@ -6,7 +6,7 @@ import Data.Maybe
 main = do
   initPlugin ["testPlugin"] [] recvMsg
 
-recvMsg mInfo (MsgCmd msg server prefix cmd) = do
+recvMsg mInfo (MsgCmd msg server prefix cmd _) = do
   let serv = (address server)
       chan = (fromJust $ mChan msg) 
   
