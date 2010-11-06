@@ -424,15 +424,21 @@ pluginLoop mArgs mPlugin = do
       let filt = filter (mPlugin /=) (plugins args)
       putMVar mArgs (args {plugins = filt})
 
+compareAddr :: B.ByteString -> B.ByteString -> Bool
+compareAddr addr properAddr =
+  if "*." `B.isPrefixOf` addr
+    then (B.drop 2 addr) `B.isSuffixOf` properAddr
+    else addr == properAddr
+
 sendRawToServer :: MVar MessageArgs -> B.ByteString -> B.ByteString -> IO Bool
 sendRawToServer mArgs server msg = do
   args <- readMVar mArgs 
   servers <- readMVar $ argServers args
   filtered <- filterM (\srv -> do addr <- getAddress srv
-                                  return $ addr == server) 
+                                  return $ server `compareAddr` addr) 
                          servers
   if not $ null filtered
-    then do sendRaw (filtered !! 0) msg
+    then do forM filtered ((flip sendRaw) msg)
             return True
     else return False
 
