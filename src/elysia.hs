@@ -123,8 +123,9 @@ main = do
   -- Create the MessageArgs MVar
   argsMVar <- newMVar (MessageArgs users serversMVar plugins)
   
-  -- Run the pluginLoops
-  mapM_ (forkIO . pluginLoop argsMVar) plugins
+  -- Run the pluginLoops. pluginLoop will block until the plugin sends the pid
+  -- message, when it does it will run itself in a new thread.
+  mapM_ (pluginLoop argsMVar) plugins
   
   let events = [(Privmsg (onMessage argsMVar))
                ,(Privmsg (onPrivateMessage argsMVar))

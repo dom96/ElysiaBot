@@ -355,6 +355,43 @@ getErrs plugin = do
   contents <- getAllLines (pStderr plugin)
   return $ unlines contents
 
+-- NOTE: This function should only return True *once*; the first time it gets
+--       the pid message.
+eventsPlugin :: MVar MessageArgs -> MVar Plugin 
+                -> String
+                -> IO Bool -- whether to stop waiting for pid
+eventsPlugin mArgs mPlugin line = do
+  plugin <- readMVar mPlugin
+  let decoded = decodeMessage line
+  case decoded of
+    Right (MsgSend addr msg id) -> do 
+      ret <- sendRawToServer mArgs addr msg
+      if ret
+        then writeCommand (PCSuccess "Message sent." id) mPlugin
+        else writeCommand (PCError "Server doesn't exist." id) mPlugin
+      return False
+    Right (MsgPid pid)          -> do
+      _ <- swapMVar mPlugin (plugin {pPid = Just pid})
+      -- NOTE: This checks whether the 'old' plugin had the pid.
+      --       we don't want a new thread everytime the plugin
+      --       sends the pid message.
+      if isJust (pPid plugin)
+        then return False
+        else return True
+    Right (MsgCmdAdd cmd id)    -> do 
+      _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
+      writeCommand (PCSuccess "Command added." id) mPlugin
+      return False
+    Right (MsgIrcAdd code id)    -> do 
+      _ <- swapMVar mPlugin (
+           plugin {pCodes = (B.map toLower code):pCodes plugin})
+      writeCommand (PCSuccess "IRC Command added." id) mPlugin
+      return False
+    Left  (id, err)             -> do
+      writeCommand (PCError err id) mPlugin
+      return False
+
+
 pluginLoop :: MVar MessageArgs -> MVar Plugin -> IO ()
 pluginLoop mArgs mPlugin = do
   plugin <- readMVar mPlugin
@@ -368,29 +405,14 @@ pluginLoop mArgs mPlugin = do
       line <- hGetLine (pStdout plugin)
       putStrLn $ "Got line from plugin(" ++ (B.unpack $ pName plugin) ++ "): " ++ line
       
-      when ("{" `isPrefixOf` line) $ do -- Make sure the line starts with {
-        let decoded = decodeMessage line
-        
-        case decoded of
-          Right (MsgSend addr msg id) -> do 
-            ret <- sendRawToServer mArgs addr msg
-            if ret
-              then writeCommand (PCSuccess "Message sent." id) mPlugin
-              else writeCommand (PCError "Server doesn't exist." id) mPlugin
-          Right (MsgPid pid)          -> do
-            _ <- swapMVar mPlugin (plugin {pPid = Just pid}) 
-            return ()
-          Right (MsgCmdAdd cmd id)    -> do 
-            _ <- swapMVar mPlugin (plugin {pCmds = cmd:pCmds plugin}) 
-            writeCommand (PCSuccess "Command added." id) mPlugin
-          Right (MsgIrcAdd code id)    -> do 
-            _ <- swapMVar mPlugin (
-                 plugin {pCodes = (B.map toLower code):pCodes plugin})
-            writeCommand (PCSuccess "IRC Command added." id) mPlugin
-          Left  (id, err)             -> do
-            writeCommand (PCError err id) mPlugin
+      if ("{" `isPrefixOf` line) -- Make sure the line starts with {
+        then do stopWait <- eventsPlugin mArgs mPlugin line
+                if stopWait
+                  then do forkIO (pluginLoop mArgs mPlugin)
+                          return ()
+                  else pluginLoop mArgs mPlugin
+        else pluginLoop mArgs mPlugin
       
-      pluginLoop mArgs mPlugin
     else do
       -- Get the error message
       errs <- getErrs plugin
