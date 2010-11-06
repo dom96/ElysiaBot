@@ -1,5 +1,5 @@
-module Modules.Github.GhServer (listenLoop) where
-import Network.SimpleIRC
+module GhServer (listenLoop) where
+import PluginUtils
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
 import Data.Maybe
@@ -13,7 +13,7 @@ import Network.HTTP
 import Network.Browser
 import Data.List
 import Control.Monad
-import Modules.Github.ParsePayload
+import ParsePayload
 
 allowedUsers = ["dom96", "XAMPP", "Amrykid", "RockerMONO"]
 
@@ -70,25 +70,17 @@ serverReply h method
           "<p>OMG LOOK IT'S A TEAPOT!</p>\n" ++
           "<img src=\"http://jamorama.com/blog/wp-content/uploads/2009/10/teapot6bk1.jpg\"/>\n"
 
-announce :: String -> String -> [MIrc] -> String -> IO ()
-announce servAddr chan servers msg = do
-  forM_ servers (\s -> do
-    addr <- getAddress s
-    when ((B.unpack addr) == servAddr)
-         (sendMsg s (B.pack chan) (B.pack msg)))
-
-listenLoop s serversM = do
+listenLoop s = do
   (h, hn, port) <- accept s
   hSetBuffering h LineBuffering
   putStrLn $ "Got connection from " ++ hn
 
   method <- getMethod h
   
-  putStrLn $ show $ "POST " `isPrefixOf` method
+  putStrLn $ "Starts with POST? = " ++ (show $ "POST " `isPrefixOf` method)
   putStrLn $ "Method =: " ++ method
   
   correctReq <- serverReply h method
-  servers <- readMVar serversM
   
   if (isJust correctReq) && "github.com" `isSuffixOf` hn
     then do let (addr, chan) = fromJust correctReq
@@ -102,13 +94,13 @@ listenLoop s serversM = do
                      let allowed = any (== (a_name (owner $ repository p))) allowedUsers
                      when allowed $ do
                        formatted <- formatOutput p
-                       announce addr chan servers formatted)
+                       sendPrivmsg (B.pack addr) (B.pack chan) (B.pack formatted))
                    parsed
             
             hClose h
     else hClose h
   
-  listenLoop s serversM
+  listenLoop s
 
 -- dom96/SimpleIRC - 3 commit(s) on master, f3g45g.. <http://is.gd/whate> ..y54gsf
 -- dom96: +[whatever.hs, this.hs... 5] -[blah.hs] +-[that.hs] Message

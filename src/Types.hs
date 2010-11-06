@@ -8,8 +8,7 @@ import System.Process
 import System.IO
 -- Commands.hs
 data MessageArgs = MessageArgs
-  { modules :: [IrcModule]
-  , users   :: Users
+  { users   :: Users
   , argServers :: MVar [MIrc]
   , plugins :: [MVar Plugin]
   }

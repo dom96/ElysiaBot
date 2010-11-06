@@ -1,4 +1,4 @@
-module Modules.Github.ParsePayload (Author(..), Repo(..), Commit(..), Payload(..), parseAll) where
+module ParsePayload (Author(..), Repo(..), Commit(..), Payload(..), parseAll) where
 import Text.JSON
 import Text.JSON.String
 import Text.JSON.Types

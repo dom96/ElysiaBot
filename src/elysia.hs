@@ -16,7 +16,6 @@ import Control.Concurrent.MVar
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 
-import Modules
 import Config
 import Users
 import Commands
@@ -109,8 +108,6 @@ main = do
   -- Create a new MVar to store the servers
   serversMVar <- newMVar ([] :: [MIrc])
   
-  mods <- loadMods "modules" appDatDir serversMVar
-  
   -- Load the users
   putStrLn $ "Loading users - " ++ appDatDir </> "users.ini"
   users <- readUsers $ appDatDir </> "users.ini"
@@ -124,7 +121,7 @@ main = do
   plugins <- runPlugins
   
   -- Create the MessageArgs MVar
-  argsMVar <- newMVar (MessageArgs mods users serversMVar plugins)
+  argsMVar <- newMVar (MessageArgs users serversMVar plugins)
   
   -- Run the pluginLoops
   mapM_ (forkIO . pluginLoop argsMVar) plugins

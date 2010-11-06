@@ -11,7 +11,6 @@ import System.Exit
 import System.Process
 import System.FilePath
 
-import Modules
 import Users
 import Types
 import Plugins
@@ -40,14 +39,6 @@ cmdHandler argsMVar mIrc m dest
     sendMsg mIrc dest "hai thar!"
   | msg `isCmd` "say" = do
     sendMsg mIrc dest (B.drop 1 $ B.dropWhile (/= ' ') msg)
-  | msg `isCmd` "clear" = do
-    modifyMVar_ argsMVar (\a -> return $ a {modules = []})
-    sendMsg mIrc dest "Modules cleared"
-  
-  | msg `isCmd` "modules" = do
-    args <- readMVar argsMVar
-    let mods = modules args
-    sendMsg mIrc dest ("Available modules: " `B.append` (B.pack $ toString mods))
   
   | msg `isCmd` "quit"  = do
     args <- readMVar argsMVar
@@ -60,21 +51,6 @@ cmdHandler argsMVar mIrc m dest
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
             (sendCmd mIrc $ MJoin chanToJoin Nothing)
             (sendMsg mIrc dest "You need to be an admin to execute this command.")
-  
-  | (msg `isCmd` "mute" || msg `isCmd` "unmute") && safeCheckArg msg 1  = do
-    args <- readMVar argsMVar
-    let mod    = fromJust $ safeGetArg msg 1
-    let func   = (msg `isCmd` "mute") ? (muteModule, unmuteModule)
-    let result = func (modules args) mod dest
-    
-    ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
-      (do if isJust result
-            then do _ <- swapMVar argsMVar (args {modules = fromJust $ result})
-                    sendMsg mIrc dest 
-                      ("Module successfully " `B.append`
-                      ((msg `isCmd` "mute") ? ("", "un")) `B.append` "muted.")
-            else sendMsg mIrc dest "Module not found.")
-      (sendMsg mIrc dest "You need to be an admin to execute this command.")
   
   | msg `isCmd` "users" = do
     args <- readMVar argsMVar
@@ -112,25 +88,7 @@ cmdHandler argsMVar mIrc m dest
       then sendMsg mIrc dest (pDescription (fromJust plugin))
       else sendMsg mIrc dest "Plugin not found."
     
-  | B.isPrefixOf prefix msg = do
-    -- If no commands are defined for this command
-    -- check if they are defined in the modules
-    args <- readMVar argsMVar
-    let mods = modules args
-    ret <- callCmds (Just prefix) argsMVar m mods mIrc
-    mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
-    
-    putStrLn $ (show $ length $ concat ret) ++ " prefixed commands replied to."
-    
-  | otherwise = do
-    args <- readMVar argsMVar
-    let mods = modules args
-    ret <- callCmds Nothing argsMVar m mods mIrc
-    mapM (\plM -> sendMsg mIrc dest (plM)) (concat ret)
-    
-    putStrLn $ (show $ length $ concat ret) ++ " raw commands replied to."
-  
-    return ()
+  | otherwise = return ()
   where msg  = mMsg m
 
 dropPrefix :: IrcMessage -> B.ByteString

@@ -1,4 +1,4 @@
-module Modules.GDict.GDictParse (lookupDict, ParsedDict(..)) where
+module GDictParse (lookupDict, ParsedDict(..)) where
 import Network.Browser
 import Network.HTTP
 import Network.URI
