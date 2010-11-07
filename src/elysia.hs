@@ -77,6 +77,12 @@ connectServers events conf = do
   
   lConn False (cnfServers conf !! 0)
 
+onDisconnect mIrc = do
+  m <- reconnect mIrc
+  either (\err -> putStrLn $ "Unable to reconnect: " ++ show err)
+         (\_   -> putStrLn "Successfully reconnected.")
+         m
+
 writePID conf = do
   pid <- getProcessID
   writeFile (cnfPidFile conf) (show pid)
@@ -130,7 +136,9 @@ main = do
   let events = [(Privmsg (onMessage argsMVar))
                ,(Privmsg (onPrivateMessage argsMVar))
                ,(Numeric (collectServers argsMVar))
-               ,(RawMsg  (messagePlugin argsMVar))]
+               ,(RawMsg  (messagePlugin argsMVar))
+               ,(Disconnect onDisconnect)
+               ]
   let connect' = do writePID conf
                     _ <- connectServers events conf
                     return ()
