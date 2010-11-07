@@ -7,8 +7,9 @@ import Data.Maybe
 import Data.Ratio ((%))
 
 data Author = Author
-  { a_name  :: String
-  , email   :: String
+  { a_name     :: String
+  , a_username :: String
+  , email      :: String
   } deriving (Show)
 
 data Repo = Repo
@@ -51,7 +52,7 @@ data Payload = Payload
   , invalid    :: Maybe [String] -- Invalid objects.
   } deriving (Show)
 
-defaultAuthor  = Author "" ""
+defaultAuthor  = Author "" "" ""
 defaultRepo    = Repo
   { created_at = ""
   , open_issues = 0 % 0
@@ -184,6 +185,9 @@ parseAuthor author ("email", (JSString (JSONString val))) =
   author { email = val}
 parseAuthor author ("name", (JSString (JSONString val))) = 
   author { a_name = val}
+parseAuthor author ("username", (JSString (JSONString val))) = 
+  author { a_name = val}
+
 
 fromJSStr :: JSValue -> String
 fromJSStr (JSString (JSONString val)) = val
