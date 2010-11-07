@@ -155,7 +155,11 @@ rpcToSend (RPCRequest _ (JSArray params) (Just id))
         msg    = getJSString $ params !! 3
     in case cmd of 
          "privmsg" -> Right $
-            MsgSend server (showCommand (MPrivmsg chan msg)) numId
+            MsgSend server (foldl 
+                              (\a m -> a `B.append` "\n" `B.append`
+                                         showCommand (MPrivmsg chan m)) "" 
+                                                     (B.lines msg))
+                           numId
          "part"    -> Right $
             MsgSend server (showCommand (MPart chan msg)) numId
          "topic"   -> Right $ 
