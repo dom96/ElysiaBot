@@ -170,7 +170,11 @@ collectServers :: MVar MessageArgs -> EventFunc
 collectServers argsMVar s m
   | mCode m == "001" = do
     args <- readMVar argsMVar
-    modifyMVar_ (argServers args) (\a -> return $ s:a)
+    servers <- readMVar (argServers args)
+    -- Check whether this particular Server MVar is already in the server list.
+    if not $ s `elem` servers
+      then modifyMVar_ (argServers args) (\a -> return $ s:a)
+      else return ()
   | otherwise = return ()
   
 -- Helpers
