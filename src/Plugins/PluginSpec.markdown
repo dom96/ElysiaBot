@@ -49,6 +49,7 @@ Message received from one of the IRC Servers that Elysia is connected to(**recv*
                      "code":   "PRIVMSG",
                      "msg":    "|hello!",
                      "chan":   "#()",
+                     "origin": "#()",
                      "other":  [],
                      "raw":    ":someone!~some@user.com PRIVMSG #() :|hello!"
                    },

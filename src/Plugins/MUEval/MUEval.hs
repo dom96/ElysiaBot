@@ -22,7 +22,7 @@ onMessage mInfo (MsgCmd cMsg server prefix cmd rest) = do
          evalResult
   where addr = address server
         msg = mMsg cMsg
-        sendMsg m = sendPrivmsg addr (fromJust $ mChan cMsg) m
+        sendMsg m = sendPrivmsg addr (fromJust $ mOrigin cMsg) m
 onMessage mInfo (MsgRecv msg server) = do
   when ("> " `B.isPrefixOf` (mMsg msg) ) $
     onMessage mInfo (MsgCmd msg server ">" " " (B.drop 2 (mMsg msg)))

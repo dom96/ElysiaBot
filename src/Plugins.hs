@@ -231,6 +231,7 @@ showJSONIrcMessage msg =
     ,("code", showJSON (mCode msg))
     ,("msg", showJSON (mMsg msg))
     ,("chan", showJSONMaybe (mChan msg))
+    ,("origin", showJSONMaybe (mOrigin msg))
     ,("other", showJSONMaybe (mOther msg))
     ,("raw", showJSON (mRaw msg))
     ]

@@ -8,10 +8,10 @@ main = do
 
 recvMsg mInfo (MsgCmd msg server prefix cmd _) = do
   let serv = (address server)
-      chan = (fromJust $ mChan msg) 
+      origin = (fromJust $ mOrigin msg) 
   
-  sendPrivmsg serv chan "Plugin works!!!"
-  sendPrivmsg serv chan (mMsg msg)
+  sendPrivmsg serv origin "Plugin works!!!"
+  sendPrivmsg serv origin (mMsg msg)
   
 recvMsg _ _ = do
   return ()

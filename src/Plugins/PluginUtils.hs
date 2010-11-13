@@ -187,6 +187,8 @@ readJSONIrcMessage js@(JSObject obj)
       , mMsg  = getJSString $ fromJust $ get_field obj "msg"
       , mChan = readJSONMaybe getJSString 
                   (getJSMaybe $ fromJust $ get_field obj "chan")
+      , mOrigin = readJSONMaybe getJSString 
+                  (getJSMaybe $ fromJust $ get_field obj "origin")
       , mOther = readJSONMaybe (\a -> map (getJSString) (getJSArray a)) 
                     (getJSMaybe $ fromJust $ get_field obj "other")
       , mRaw  = getJSString $ fromJust $ get_field obj "raw"

@@ -34,13 +34,13 @@ safeCheckArg str index = (length word - 1) >= index
 
 -- TODO: CLean up into smaller functions.
 
-cmdHandler :: MVar MessageArgs -> MIrc -> IrcMessage -> B.ByteString -> IO ()
-cmdHandler argsMVar mIrc m dest
+cmdHandler :: MVar MessageArgs -> MIrc -> IrcMessage -> IO ()
+cmdHandler argsMVar mIrc m
   | msg `isCmd` "hai" = do
-    sendMsg mIrc dest "hai thar!"
+    sendMsg mIrc origin "hai thar!"
 
   | msg `isCmd` "say" = do
-    sendMsg mIrc dest (B.drop 1 $ B.dropWhile (/= ' ') msg)
+    sendMsg mIrc origin (B.drop 1 $ B.dropWhile (/= ' ') msg)
   
   | msg `isCmd` "quit"  = do
     args <- readMVar argsMVar
@@ -58,36 +58,36 @@ cmdHandler argsMVar mIrc m dest
     args <- readMVar argsMVar
     let len    = length $ M.toList $ users args
     let admins = M.fold (\a b -> if uAdmin a then b + 1 else b) 0 (users args)
-    sendMsg mIrc dest ("I have " `B.append` (B.pack $ show len) `B.append` " users, "
+    sendMsg mIrc origin ("I have " `B.append` (B.pack $ show len) `B.append` " users, "
                     `B.append` (B.pack $ show admins) `B.append` " of which are Admins.")
   
   | msg `isCmd` "online" && safeCheckArg msg 1  = do
     args <- readMVar argsMVar
     if checkOnline (users args) (B.unpack $ fromJust $ safeGetArg msg 1)
-      then sendMsg mIrc dest "User is online"
-      else sendMsg mIrc dest "User is offline"  
+      then sendMsg mIrc origin "User is online"
+      else sendMsg mIrc origin "User is offline"  
   
   | msg `isCmd` "online" = do
     args <- readMVar argsMVar
     let onUsers = getLoggedin $ users args
     if not $ null onUsers
-      then sendMsg mIrc dest 
+      then sendMsg mIrc origin 
            ("Users online: " `B.append` (B.pack $ onUsers))
-      else sendMsg mIrc dest "No users online"
+      else sendMsg mIrc origin "No users online"
   
   | msg `isCmd` "plugins" = do
     pluginsStr <- listPlugins argsMVar
     if isJust pluginsStr
-      then sendMsg mIrc dest ("Plugins loaded: " `B.append` (fromJust pluginsStr))
-      else sendMsg mIrc dest "No plugins loaded."
+      then sendMsg mIrc origin ("Plugins loaded: " `B.append` (fromJust pluginsStr))
+      else sendMsg mIrc origin "No plugins loaded."
   
   | msg `isCmd` "desc" && safeCheckArg msg 1 = do
     args <- readMVar argsMVar
     let name = B.unpack $ fromJust $ safeGetArg msg 1
     desc <- getPluginProperty argsMVar (B.pack name) pDescription
     if isJust desc
-      then sendMsg mIrc dest (fromJust desc)
-      else sendMsg mIrc dest "Plugin not found."
+      then sendMsg mIrc origin (fromJust desc)
+      else sendMsg mIrc origin "Plugin not found."
   
   | msg `isCmd` "unload" && safeCheckArg msg 1 = do
     args <- readMVar argsMVar
@@ -95,8 +95,8 @@ cmdHandler argsMVar mIrc m dest
       do let name = fromJust $ safeGetArg msg 1
          result <- unloadPlugin argsMVar name 
          if result
-           then sendMsg mIrc dest (name `B.append` " unloaded successfully.")
-           else sendMsg mIrc dest "Plugin not found.")
+           then sendMsg mIrc origin (name `B.append` " unloaded successfully.")
+           else sendMsg mIrc origin "Plugin not found.")
       needAdmin
   
   | msg `isCmd` "load" && safeCheckArg msg 1 = do
@@ -105,13 +105,14 @@ cmdHandler argsMVar mIrc m dest
       do let name = fromJust $ safeGetArg msg 1
          result <- loadPlugin argsMVar name
          if result
-           then sendMsg mIrc dest (name `B.append` " loaded successfully.")
-           else sendMsg mIrc dest "Plugin not found.")
+           then sendMsg mIrc origin (name `B.append` " loaded successfully.")
+           else sendMsg mIrc origin "Plugin not found.")
       needAdmin
   
   | otherwise = return ()
-  where msg  = mMsg m
-        needAdmin = sendMsg mIrc dest "You need to be an admin to execute this command."
+  where msg       = mMsg m
+        origin    = fromJust $ mOrigin m
+        needAdmin = sendMsg mIrc origin "You need to be an admin to execute this command."
 
 dropPrefix :: IrcMessage -> B.ByteString
 dropPrefix m = B.drop (B.length prefix) (mMsg m)
@@ -146,11 +147,9 @@ sendCmdPlugins mArgs s msg = do
 
 onMessage :: MVar MessageArgs -> EventFunc
 onMessage argsMVar s m = do
-  dest <- getDest s m
-  
   sendCmdPlugins argsMVar s m
   
-  cmdHandler argsMVar s m dest
+  cmdHandler argsMVar s m
 
 
 onPrivateMessage :: MVar MessageArgs -> EventFunc
@@ -212,6 +211,10 @@ listPlugins mArgs = do
           if not $ B.null a
             then return $ a `B.append` ", " `B.append` b
             else return $ b
+
+pluginCommands :: MVar MessageArgs -> MIrc -> IrcMessage -> IO ()
+pluginCommands mArgs mIrc m = do
+  
 
 -- Helpers
 (?) :: Bool -> (c, c) -> c

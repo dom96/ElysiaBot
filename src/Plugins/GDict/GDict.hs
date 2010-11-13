@@ -18,7 +18,7 @@ onDict mInfo (MsgCmd cMsg server prefix cmd rest) = do
          evalResult
   where addr      = address server
         msg       = mMsg cMsg
-        sendMsg m = sendPrivmsg addr (fromJust $ mChan cMsg) m
+        sendMsg m = sendPrivmsg addr (fromJust $ mOrigin cMsg) m
 onDict _ _ = return ()
 
 limitMsg limit xs = 
