@@ -2,11 +2,12 @@
 module Commands (onMessage, onPrivateMessage, safeCheckArg, collectServers, MessageArgs(..)) where
 import Network.SimpleIRC
 import Data.Maybe (fromJust, isJust, catMaybes)
-import Data.List (find, isPrefixOf)
+import Data.List (find, isPrefixOf, intercalate)
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent.MVar
 import Control.Concurrent
+import Control.Monad
 import System.Exit
 import System.Process
 import System.FilePath
@@ -37,20 +38,21 @@ cmdHandler :: MVar MessageArgs -> MIrc -> IrcMessage -> B.ByteString -> IO ()
 cmdHandler argsMVar mIrc m dest
   | msg `isCmd` "hai" = do
     sendMsg mIrc dest "hai thar!"
+
   | msg `isCmd` "say" = do
     sendMsg mIrc dest (B.drop 1 $ B.dropWhile (/= ' ') msg)
   
   | msg `isCmd` "quit"  = do
     args <- readMVar argsMVar
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m) exitSuccess
-            (sendMsg mIrc dest "You need to be an admin to execute this command.")
+            needAdmin
   
   | msg `isCmd` "join" && safeCheckArg msg 1 = do
     args <- readMVar argsMVar
     let chanToJoin = fromJust $ safeGetArg msg 1
     ifAdmin (users args) (B.unpack $ fromJust $ mNick m)
             (sendCmd mIrc $ MJoin chanToJoin Nothing)
-            (sendMsg mIrc dest "You need to be an admin to execute this command.")
+            needAdmin
   
   | msg `isCmd` "users" = do
     args <- readMVar argsMVar
@@ -74,22 +76,42 @@ cmdHandler argsMVar mIrc m dest
       else sendMsg mIrc dest "No users online"
   
   | msg `isCmd` "plugins" = do
-    args <- readMVar argsMVar
-    let lenPlugins = length $ plugins args
-    if lenPlugins == 0
-      then sendMsg mIrc dest "No plugins loaded."
-      else sendMsg mIrc dest ((B.pack $ show lenPlugins) `B.append` " plugin(s) loaded.")
+    pluginsStr <- listPlugins argsMVar
+    if isJust pluginsStr
+      then sendMsg mIrc dest ("Plugins loaded: " `B.append` (fromJust pluginsStr))
+      else sendMsg mIrc dest "No plugins loaded."
   
   | msg `isCmd` "desc" && safeCheckArg msg 1 = do
     args <- readMVar argsMVar
-    let name   = B.unpack $ fromJust $ safeGetArg msg 1
-    plugin <- findPlugin argsMVar (B.pack name)
-    if isJust plugin
-      then sendMsg mIrc dest (pDescription (fromJust plugin))
+    let name = B.unpack $ fromJust $ safeGetArg msg 1
+    desc <- getPluginProperty argsMVar (B.pack name) pDescription
+    if isJust desc
+      then sendMsg mIrc dest (fromJust desc)
       else sendMsg mIrc dest "Plugin not found."
-    
+  
+  | msg `isCmd` "unload" && safeCheckArg msg 1 = do
+    args <- readMVar argsMVar
+    ifAdmin (users args) (B.unpack $ fromJust $ mNick m) (
+      do let name = fromJust $ safeGetArg msg 1
+         result <- unloadPlugin argsMVar name 
+         if result
+           then sendMsg mIrc dest (name `B.append` " unloaded successfully.")
+           else sendMsg mIrc dest "Plugin not found.")
+      needAdmin
+  
+  | msg `isCmd` "load" && safeCheckArg msg 1 = do
+    args <- readMVar argsMVar
+    ifAdmin (users args) (B.unpack $ fromJust $ mNick m) (
+      do let name = fromJust $ safeGetArg msg 1
+         result <- loadPlugin argsMVar name
+         if result
+           then sendMsg mIrc dest (name `B.append` " loaded successfully.")
+           else sendMsg mIrc dest "Plugin not found.")
+      needAdmin
+  
   | otherwise = return ()
   where msg  = mMsg m
+        needAdmin = sendMsg mIrc dest "You need to be an admin to execute this command."
 
 dropPrefix :: IrcMessage -> B.ByteString
 dropPrefix m = B.drop (B.length prefix) (mMsg m)
@@ -176,7 +198,21 @@ collectServers argsMVar s m
       then modifyMVar_ (argServers args) (\a -> return $ s:a)
       else return ()
   | otherwise = return ()
-  
+
+listPlugins :: MVar MessageArgs -> IO (Maybe B.ByteString)
+listPlugins mArgs = do
+  args <- readMVar mArgs
+  pluginNames <- mapM ((flip getPluginProperty_) pName) (plugins args)
+  if not $ null pluginNames
+    then do str <- foldM foldFunc "" pluginNames
+            return $ Just str
+    else return Nothing
+
+  where foldFunc a b = do
+          if not $ B.null a
+            then return $ a `B.append` ", " `B.append` b
+            else return $ b
+
 -- Helpers
 (?) :: Bool -> (c, c) -> c
 (?) b (t, e) = if b then t else e

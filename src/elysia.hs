@@ -83,7 +83,6 @@ onDisconnect mArgs mIrc = do
          (\_   -> putStrLn "Successfully reconnected.")
          m
 
-
 writePID conf = do
   pid <- getProcessID
   writeFile (cnfPidFile conf) (show pid)

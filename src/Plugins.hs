@@ -6,6 +6,10 @@ module Plugins
   , pluginLoop
   , messagePlugin
   , findPlugin
+  , unloadPlugin
+  , loadPlugin
+  , getPluginProperty
+  , getPluginProperty_
   ) where
 import System.IO
 import System.IO.Error (try, catch, isEOFError)
@@ -28,7 +32,7 @@ import Text.JSON.Generic
 import Text.JSON.Types
 
 import Data.Maybe
-import Data.List (isPrefixOf, find)
+import Data.List (isPrefixOf, find, delete)
 import Data.Ratio (numerator)
 import Data.Char (toLower)
 import Data.ConfigFile
@@ -325,6 +329,13 @@ isCorrectDir dir f = do
   r <- doesDirectoryExist (dir </> f)
   return $ r && f /= "." && f /= ".." && not ("." `isPrefixOf` f)
 
+stopPlugin :: MVar Plugin -> IO ()
+stopPlugin mPlugin = do
+  writeCommand PCQuit mPlugin
+  plugin <- readMVar mPlugin
+  -- TODO: Add a small delay, to give the plugin time to shutdown.
+  terminateProcess (pPHandle plugin)
+
 runPlugins :: IO [MVar Plugin]
 runPlugins = do
   contents  <- getDirectoryContents "Plugins/"
@@ -476,7 +487,7 @@ messagePlugin mArgs s m = do
             then writeCommand (PCMessage m s) p
             else return ()
 
-findPlugin :: MVar MessageArgs -> B.ByteString -> IO (Maybe Plugin)
+findPlugin :: MVar MessageArgs -> B.ByteString -> IO (Maybe (MVar Plugin))
 findPlugin mArgs name = do
   args <- readMVar mArgs
   pls <- filterM (\p -> do pl <- readMVar p
@@ -484,9 +495,42 @@ findPlugin mArgs name = do
                  (plugins args)
   if null pls
     then return Nothing
-    else do plugin <- readMVar (pls !! 0)
-            return $ Just plugin
+    else return $ Just (pls !! 0)
 
---unloadPlugin :: MVar MessageArgs -> B.ByteString -> IO Bool
---unloadPlugin mArgs name = do
-  
+loadPlugin :: MVar MessageArgs -> B.ByteString -> IO Bool
+loadPlugin mArgs name = do
+  currWorkDir <- getCurrentDirectory
+  let plWorkDir = currWorkDir </> "Plugins/" </> (B.unpack name)
+  dirExist <- doesDirectoryExist plWorkDir
+  if dirExist
+    then do plugin <- runPlugin (B.unpack name)
+            pluginLoop mArgs plugin
+            modifyMVar_ mArgs (\a -> return $ a {plugins =  plugin:(plugins a)})
+            return True
+    else return False
+
+
+unloadPlugin :: MVar MessageArgs -> B.ByteString -> IO Bool
+unloadPlugin mArgs name = do
+  pl <- findPlugin mArgs name
+  if isJust pl
+    then do stopPlugin (fromJust pl)
+            modifyMVar_ mArgs 
+                        (\arg -> return $
+                                 arg {plugins = (delete (fromJust pl) $ 
+                                          plugins arg)})
+            return True
+    else return False
+
+getPluginProperty_ :: MVar Plugin -> (Plugin -> a) -> IO a
+getPluginProperty_ mPlugin prop = do
+  plugin <- readMVar mPlugin
+  return $ prop plugin
+
+getPluginProperty :: MVar MessageArgs -> B.ByteString -> (Plugin -> a) -> IO (Maybe a)
+getPluginProperty mArgs name prop = do
+  pl <- findPlugin mArgs name
+  if isJust pl
+    then do ret <- getPluginProperty_ (fromJust pl) prop
+            return $ Just ret
+    else return Nothing

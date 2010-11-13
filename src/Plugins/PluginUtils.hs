@@ -17,6 +17,7 @@ module PluginUtils
   ) where
 
 import System.IO
+import System.Exit
 import System.Posix.Process (getProcessID)
 
 import Network.SimpleIRC
@@ -134,6 +135,7 @@ rpcToMsg :: RPC -> Message
 rpcToMsg req@(RPCRequest method _ _)
   | method == "recv" = rpcToRecv req
   | method == "cmd"  = rpcToCmd  req
+  | method == "quit" = MsgQuit
 rpcToMsg rsp@(RPCResponse _ (Just _) _) = rpcToError   rsp
 rpcToMsg rsp@(RPCResponse _ Nothing _)  = rpcToSuccess rsp
 
@@ -244,7 +246,9 @@ pluginLoop mInfo func = do
   where decodeExec func m = do 
           let msg = decodeMessage m
           func mInfo msg
-
+          onQuit msg
+        onQuit (MsgQuit) = do exitSuccess
+        onQuit _         = return ()
 isStatus :: Message -> Bool
 isStatus (MsgSuccess _ _) = True
 isStatus (MsgError   _ _) = True
