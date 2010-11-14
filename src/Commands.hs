@@ -26,12 +26,16 @@ startsWithPrefix myNick m =
   where 
     prefixedCmd = (prefix) `B.isPrefixOf` m 
     directCmd
-      | (myNick `B.append` ":") `B.isPrefixOf` m  = 
-          Just (myNick `B.append` ":")
+      | (myNick `B.append` " ") `B.isPrefixOf` m  = 
+          Just (myNick `B.append` " ")
       | (myNick `B.append` ": ") `B.isPrefixOf` m = 
           Just (myNick `B.append` ": ")
       | (myNick `B.append` ", ") `B.isPrefixOf` m = 
           Just (myNick `B.append` ", ")
+      | (myNick `B.append` ":") `B.isPrefixOf` m  = 
+          Just (myNick `B.append` ":")
+      | (myNick `B.append` ",") `B.isPrefixOf` m  = 
+          Just (myNick `B.append` ",")
       | otherwise = Nothing
 
 isCmd :: B.ByteString -> B.ByteString -> B.ByteString -> Bool
@@ -150,44 +154,50 @@ cmdHandlerPlugins mArgs prfx mIrc m
     origin    = fromJust $ mOrigin m
     isCmd'    = isCmd prfx
   
-dropPrefix :: IrcMessage -> B.ByteString
-dropPrefix m = B.drop (B.length prefix) (mMsg m)
+dropPrefix :: IrcMessage -> B.ByteString -> B.ByteString
+dropPrefix m prfx = B.drop (B.length prfx) (mMsg m)
 
-pluginHasCmd :: IrcMessage -> MVar Plugin -> IO (Either () B.ByteString)
-pluginHasCmd msg mPlugin = do
+pluginHasCmd :: IrcMessage -> MVar Plugin -> B.ByteString -> IO (Either () B.ByteString)
+pluginHasCmd msg mPlugin prfx = do
     plugin <- readMVar mPlugin
-    let cmd      = dropPrefix msg
+    let cmd      = dropPrefix msg prfx
         maybeCmd = find ((flip B.isPrefixOf) cmd) (pCmds plugin)
     if isJust maybeCmd
       then return $ Right $ fromJust maybeCmd
       else return $ Left ()
 
-sendCmdPlugins :: MVar MessageArgs -> MIrc -> IrcMessage -> IO ()
-sendCmdPlugins mArgs s msg = do
+sendCmdPlugins :: MVar MessageArgs -> B.ByteString -> MIrc -> IrcMessage -> IO ()
+sendCmdPlugins mArgs prfx s msg = do
     -- Check if any plugin has this command binded
     args <- readMVar mArgs
-    if B.isPrefixOf prefix (mMsg msg)
-      then mapM_ (condWrite) (plugins args)
-      else return ()
+    mapM_ (condWrite) (plugins args)
 
     where doWrite p cmd = do
-              let rest  = B.drop (B.length prefix + B.length cmd) (mMsg msg)
+              let rest  = B.drop (B.length prfx + B.length cmd) (mMsg msg)
                   rest2 = if B.take 1 rest == " "
                             then B.drop 1 rest
                             else rest
-              writeCommand (PCCmdMsg msg s prefix cmd rest2) p
+              writeCommand (PCCmdMsg msg s prfx cmd rest2) p
           condWrite p = do
-              cmd <- pluginHasCmd msg p
+              cmd <- pluginHasCmd msg p prfx
               either (\_ -> return ()) (doWrite p) cmd
 
 onMessage :: MVar MessageArgs -> EventFunc
 onMessage mArgs s m = do
     myNick <- getNickname s 
-    let isPrfx = startsWithPrefix myNick (mMsg m)
+    let isPrfx    = startsWithPrefix myNick (mMsg m)
 
-    when (isJust isPrfx) $ do 
-      let prfx = fromJust isPrfx
-      sendCmdPlugins mArgs s m
+    isPrivMsg <- isPM s m
+
+    let maybePrfx = 
+          if isJust isPrfx
+            then isPrfx
+            else if isPrivMsg then Just "" else Nothing
+
+    when (isJust maybePrfx) $ do 
+      let prfx = fromJust maybePrfx
+        
+      sendCmdPlugins mArgs prfx s m
       
       cmdHandler mArgs prfx s m
       cmdHandlerPlugins mArgs prfx s m
@@ -195,13 +205,12 @@ onMessage mArgs s m = do
 
 onPrivateMessage :: MVar MessageArgs -> EventFunc
 onPrivateMessage argsMVar s m = do
-    nick <- getNickname s
-    if nick == (fromJust $ mChan m)
-      then do case (lineM !! 0) of
-                "login"   -> changeStatus argsMVar True s m 
-                "logout"  -> changeStatus argsMVar False s m
-                otherwise -> return ()
-      else return ()
+    isPrivMsg <- isPM s m
+    when isPrivMsg $ do 
+      case (lineM !! 0) of
+        "login"   -> changeStatus argsMVar True s m 
+        "logout"  -> changeStatus argsMVar False s m
+        otherwise -> return ()
   where 
     msg   = mMsg m
     lineM = B.words msg
@@ -265,3 +274,9 @@ sendAll servers cmd = do
   mapM (flip sendCmd cmd) servers
   return ()
 
+-- |Checks if the message is a Private Message.
+isPM :: MIrc -> IrcMessage -> IO Bool
+isPM s m = do
+  nick <- getNickname s
+  return $ nick == (fromJust $ mChan m)
+    
