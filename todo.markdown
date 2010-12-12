@@ -3,6 +3,8 @@
 * Modules(Plugins) as processes
     * <del>Loading, unloading, and plugin list.</del>
     * Compile & run files for each language -- `compile.haskell` & `run.haskell` in the *plugins* directory.
+        * Plugins should only be compiled if a) the `run` file failed or binary doesn't exist, or b) ElysiaBot was launched with --force-comp.
+        * If a `run` file doesn't exist, ElysiaBot should just try running the executable by the name of the plugin(taken from the .ini file)
     * Clean up the PluginSpec
     * MonoDB database
     * Add plugin functions for:

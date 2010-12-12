@@ -68,7 +68,7 @@ ifAdmin_ mArgs mIrc m f = do
 cmdHandler :: MVar MessageArgs -> B.ByteString -> MIrc -> IrcMessage -> IO ()
 cmdHandler mArgs prfx mIrc m
     | msg `isCmd'` "say" = do
-      sendMsg mIrc origin (B.drop (B.length prfx) $ B.dropWhile (/= ' ') msg)
+      sendMsg mIrc origin (B.drop (B.length prfx + 4) msg)
     
     | msg `isCmd'` "quit"  = do
       ifAdmin_ mArgs mIrc m exitSuccess
