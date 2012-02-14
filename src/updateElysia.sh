@@ -10,7 +10,7 @@ if [ -f "elysia" ]; then
   rm elysiaBCK
   echo "Executing ElysiaBot"
 
-  ./elysia -d
+  ./elysia
 else
   echo "!!-Error-!! Compilation failed."
 fi
