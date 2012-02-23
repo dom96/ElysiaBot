@@ -10,7 +10,6 @@ import System.Environment
 import System.Posix.Signals
 import System.Posix.Process (getProcessID)
 import System.Console.GetOpt
-import System.Posix.Daemonize
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
 import qualified Data.Map as M
@@ -23,14 +22,12 @@ import Plugins
 
 data Options = Options
  {  
-   optDaemon      :: Bool
- , optShowVersion :: Bool
+   optShowVersion :: Bool
  , optStop        :: Bool
  } deriving Show
  
 defaultOptions    = Options
- { optDaemon      = False
- , optShowVersion = False
+ { optShowVersion = False
  , optStop        = False
  }
 
@@ -38,8 +35,6 @@ options :: [OptDescr (Options -> Options)]
 options = 
     [ Option ['v'] ["version"] 
         (NoArg (\opts -> opts { optShowVersion = True })) "Show version number"
-    , Option ['d'] ["daemon"] 
-        (NoArg (\opts -> opts { optDaemon = True })) "Run as Daemon"
     , Option ['S'] ["stop"]
         (NoArg (\opts -> opts { optStop = True })) "Stop"
     ]
@@ -146,12 +141,4 @@ main = do
   -- All file loading(that is in elysia's directory) has to be done before calling
   -- daemonize, because it changes the current working dir.
   
-  -- TODO: Get rid of hdaemonize, it only causes problems...
-  
-  if optDaemon opts
-    then do isRunning conf -- Exit if elysia is already running.
-            putStrLn "Starting as a daemon."
-            daemonize connect'
-    else connect'
-  
-
+  connect'
